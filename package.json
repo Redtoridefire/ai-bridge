@@ -1,0 +1,8 @@
+{
+  "name": "ai-bridge",
+  "version": "1.0.0",
+  "description": "Multi-platform AI workspace: log in to Claude/ChatGPT/Gemini (multiple accounts) side by side and share conversations between them.",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "^33.0.0" }
+}
