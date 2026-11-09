@@ -1,44 +1,106 @@
-# AI Bridge — one workspace for all your AI accounts
+# AI Command Center
 
-A free, local desktop app that puts **Claude, ChatGPT, Gemini, and Copilot side by side** — including multiple accounts of the same platform (e.g. two Claude accounts). When you hit a usage limit on one, click **Share** and the whole conversation (your messages *and* the AI's answers) is dropped into the other platform's input box with a "take over, don't restart" instruction — press Enter and keep working.
+AI Command Center is a free, local-first Electron workspace for using existing AI website accounts side by side. It extends [AI Bridge](https://github.com/mananmaroo/ai-bridge) by Manan Maroo and preserves its MIT license and core idea: authenticate on each provider's real website, keep account sessions isolated, and move context only when the user asks.
 
-- 100% local. No server, no stored passwords, no login automation — you sign in normally inside each pane, and each pane keeps its own isolated, persistent session.
-- Handles very long conversations (up to ~120k characters; the oldest part is trimmed if bigger).
-- Nothing is sent anywhere except by you pressing Enter in the target chat.
+No Command Center account, API key, subscription, analytics service, or external application server is required.
 
-Also listed on [agentshive.net](https://www.agentshive.net/agents/e9c2a24c-629b-43b9-86a8-3d94e5a15fa1).
+## What works
 
-## Install
+- Eight registered providers: ChatGPT, Claude, Grok, Gemini, DeepSeek, Perplexity, Microsoft Copilot, and Google AI Studio.
+- Independent persistent browser sessions for multiple accounts of the same provider.
+- One to four simultaneous panels in each saved workspace.
+- Independent, Compare, and Handoff modes. Compare prepares a prompt but never silently submits it. Handoff exposes an editable preview and requires confirmation.
+- Best-effort composer insertion and conversation extraction for providers with maintained selectors, with clipboard/manual fallback for every workflow.
+- Local notes, prompt snippets, projects, labels, favorites, and an explicitly populated searchable library.
+- JSON, Markdown, and HTML export, plus provenance-aware import of AI Command Center, official ChatGPT, and official Claude JSON exports.
+- Dark, light, and system themes; keyboard shortcuts; persistent layouts.
+- A narrow preload API, isolated provider partitions, restricted navigation, validated IPC, and denied privileged access from provider pages.
 
-**Step 0 — Node.js** (skip if `node --version` prints v20+):
-- **Windows:** install the LTS from [nodejs.org](https://nodejs.org) (keep "Add to PATH" checked), then reopen your terminal.
-- **macOS:** LTS .pkg from nodejs.org, or `brew install node`.
-- **Linux:** `sudo apt install nodejs npm`
+Provider websites change independently. A successful sign-in, content extraction, or composer insertion can vary by provider, account, region, and current site design. The app does not use private APIs, bypass access controls, automate CAPTCHAs, or submit messages without a visible user action.
 
-**Step 1 — Get the app:**
+## Windows development
 
-```
-git clone https://github.com/mananmaroo/ai-bridge.git
-cd ai-bridge
+Prerequisites:
+
+- Windows 10 or 11
+- Node.js 20 LTS or newer
+- PowerShell 5.1 or newer
+
+From PowerShell:
+
+```powershell
+git clone https://github.com/Redtoridefire/ai-bridge.git
+Set-Location ai-bridge
 npm install
+npm test
 npm start
 ```
 
-(`npm install` downloads Electron once, ~2 minutes. Run `npm start` anytime to relaunch — logins are remembered.)
+You can also run `./scripts/start.ps1`, which checks Node.js, installs missing dependencies, runs the checks, and starts the app.
 
-## How to use
+The first time a provider panel opens, sign in directly within that panel. Each panel uses a persistent Electron partition keyed by its local panel ID. Removing a panel removes it from the layout; it does not export its cookies or credentials.
 
-1. Two panes open by default (Claude left, ChatGPT right). Log in inside each pane like a normal browser.
-2. **+ Add account** to add panes — pick a platform and a label like "Claude — work account". Each pane is a separate cookie jar, so two Claude accounts can be signed in at once.
-3. Click a tab to show it on the **left** · **Ctrl+click** for the **right**.
-4. Open the conversation you want to hand off in the source pane, then hit **Share left ➜ right** (or right ➜ left). Review the pasted transcript in the target pane and press Enter.
-5. For very long chats, scroll up in the source pane first so older messages load before sharing.
+## Build a Windows installer and portable app
 
-## Notes
+On Windows PowerShell:
 
-- The share feature reads each platform's message elements; if a platform redesigns its chat page, the selector lists in `index.html` (`EXTRACT` / `insertScript`) are the one place to update.
-- This intentionally does **not** automate logins or store credentials — that keeps it safe and within each platform's terms of service.
+```powershell
+npm install
+npm test
+npm run dist:win
+```
 
-## License
+Artifacts are written to `dist/`:
 
-MIT
+- `AI-Command-Center-<version>-<arch>.exe` NSIS installer
+- A portable Windows executable
+
+The installer is unsigned. Windows SmartScreen may warn about unsigned community builds. Production distributors should configure their own code-signing certificate through electron-builder's supported environment settings; never commit signing credentials.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+1` | Independent mode |
+| `Ctrl+2` | Compare mode |
+| `Ctrl+3` | Handoff mode |
+| `Ctrl+Shift+P` | Add provider account |
+
+## Local data model
+
+Workspace layouts, settings, notes, snippets, labels, projects, handoff metadata, and explicitly saved library content are stored in the app's Chromium local storage under Electron's OS-managed user data directory. Provider cookies and web storage remain in separate persistent Electron session partitions. JSON exports include organization data and saved library content but never provider cookies or login tokens.
+
+Local search only covers content the user explicitly saves or imports. It does not claim to index complete provider histories and does not scrape entire accounts.
+
+## Architecture
+
+- `main.js`: window lifecycle, webview policy, permissions, navigation, validated file dialogs, session clearing.
+- `preload.js`: frozen, narrow IPC bridge exposed to the trusted local renderer.
+- `src/providers.js`: provider metadata, capabilities, URLs, and isolated selector adapters.
+- `src/core.js`: pure state normalization, workspaces, search, import/export.
+- `src/security.js`: origin, partition, external URL, and export validation.
+- `renderer.js`: local UI, session views, explicit compare/handoff workflows, and productivity features.
+- `tests/`: Node test suite for core behavior, registry coverage, and security boundaries.
+
+## Current limitations
+
+- Provider website embedding and automation are inherently subject to provider policy and technical controls. Some sites may block Electron sign-in or embedded pages. Use the manual clipboard workflow or the provider in your regular browser when that occurs.
+- Extraction adapters are best effort for ChatGPT, Claude, Gemini, and Copilot. Grok, DeepSeek, Perplexity, and Google AI Studio default to manual extraction until tested selectors can be maintained responsibly.
+- Compare mode prepares prompts but leaves final submission to the user in every panel.
+- Conversation search covers saved/imported content only.
+- Detachable provider windows and optional Ollama summaries remain roadmap items.
+- Linux cloud containers that disable user namespaces may require Electron's `--no-sandbox` flag for development. Packaged Windows builds use Chromium's normal Windows sandbox; do not add `--no-sandbox` to Windows shortcuts.
+
+## Development and security
+
+```powershell
+npm run check
+npm test
+npm run pack
+```
+
+See [SECURITY.md](SECURITY.md) for the threat model and reporting guidance. Keep site-specific selectors in `src/providers.js`; do not add privileged browser-page preload scripts, remote Node integration, credential logging, or unsupported provider APIs.
+
+## License and attribution
+
+MIT. Copyright (c) 2026 Manan Maroo. AI Command Center is based on the original AI Bridge project and retains the upstream license in [LICENSE](LICENSE).
