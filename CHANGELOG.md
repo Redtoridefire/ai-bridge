@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 1.2.0
+
+- Added searchable/favoritable skill and context libraries with reviewed public GitHub skill imports and attribution.
+- Added template fields and explicit copy/composer preparation for skills, context packets, and prompt snippets.
+- Added conversation bookmarks, a provider-attributed comparison notebook, and workspace presets.
+- Added persistent column sizing, panel ordering/focus controls, and mounted views across workspace switches.
+- Added rotating local organization backups and restore with a safety snapshot.
+- Added optional local Ollama model discovery and content processing.
+- Added productivity, import, backup, and live Electron workflow tests.
+
 - Fixed Independent, Compare, and Handoff toolbars incorrectly appearing together.
 - Fixed clipped controls at smaller window widths and hidden utility panel overflow.
 - Preserved comparison target selections across mode and utility changes.

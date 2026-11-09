@@ -31,7 +31,7 @@ function loadState() {
       return Core.normalizeState(migrated);
     }
   } catch (error) { console.warn("Could not load local state", error); }
-  return Core.defaultState();
+  return Core.normalizeState(Core.defaultState());
 }
 
 function persist() {
@@ -111,24 +111,35 @@ function renderPanels() {
   const grid = $("#panel-grid");
   const workspace = currentWorkspace();
   grid.dataset.count = String(workspace.panels.length || 1);
-  const fragment = document.createDocumentFragment();
+  const known = new Set(state.workspaces.flatMap(item => item.panels.map(panel => panel.id)));
+  grid.querySelectorAll('.provider-panel').forEach(wrapper => {
+    if (!known.has(wrapper.dataset.panelId)) { viewCache.delete(wrapper.dataset.panelId); wrapper.remove(); }
+    else wrapper.hidden = wrapper.dataset.workspaceId !== workspace.id;
+  });
+  grid.querySelector('.empty-workspace')?.closest('section.empty-workspace')?.remove();
   if (!workspace.panels.length) {
     const empty = document.createElement("section");
     empty.className = "empty-workspace";
     empty.innerHTML = `<div><h2>Build your workspace</h2><p class="muted">Add an AI provider account. Sign-in happens on the provider's real website in an isolated session.</p><button class="primary" data-empty-add>Add provider account</button></div>`;
-    fragment.append(empty);
+    grid.append(empty);
   }
-  workspace.panels.forEach((panel) => {
+  workspace.panels.forEach((panel, index) => {
     const provider = byId[panel.providerId];
     if (!provider) return;
-    const wrapper = document.createElement("section");
+    let wrapper = [...grid.querySelectorAll('.provider-panel')].find(item => item.dataset.panelId === panel.id);
+    if (wrapper && wrapper.dataset.providerId !== panel.providerId) { wrapper.remove(); viewCache.delete(panel.id); wrapper = null; }
+    if (wrapper) { wrapper.hidden = false; wrapper.style.order = index; return; }
+    wrapper = document.createElement("section");
     wrapper.className = "provider-panel";
     wrapper.dataset.panelId = panel.id;
+    wrapper.dataset.workspaceId = workspace.id;
+    wrapper.dataset.providerId = panel.providerId;
+    wrapper.style.order = index;
     wrapper.innerHTML = `<header class="panel-header"><span class="provider-dot" style="background:${provider.color}"></span><strong title="${Core.escapeHtml(panel.accountLabel)}">${Core.escapeHtml(panel.accountLabel)}</strong><span class="panel-status" data-panel-status="${panel.id}">Ready</span><button data-panel-back="${panel.id}" title="Back">←</button><button data-panel-reload="${panel.id}" title="Reload">↻</button><button data-panel-remove="${panel.id}" title="Remove panel">×</button></header><div class="webview-slot"></div>`;
     wrapper.querySelector(".webview-slot").append(createWebview(panel));
-    fragment.append(wrapper);
+    grid.append(wrapper);
   });
-  grid.replaceChildren(fragment);
+  if (typeof applyPanelLayout === 'function') applyPanelLayout();
 }
 
 function renderCompareTargets() {
@@ -153,7 +164,7 @@ function renderUtility() {
 
 function cardMarkup(item, kind) {
   const favorite = item.favorite ? "★" : "☆";
-  return `<article class="local-card"><header><strong>${Core.escapeHtml(item.title)}</strong>${kind === "library" ? `<button data-favorite-item="${item.id}" title="Favorite">${favorite}</button>` : ""}<button data-delete-item="${kind}:${item.id}" title="Delete">×</button></header><p>${Core.escapeHtml(item.content)}</p><small>${Core.escapeHtml(item.providerName || item.updatedAt?.slice(0, 10) || "Local")}${item.labels?.length ? ` · ${Core.escapeHtml(item.labels.join(", "))}` : ""}</small></article>`;
+  return `<article class="local-card"><header><strong>${Core.escapeHtml(item.title)}</strong>${kind === "library" ? `<button data-favorite-item="${Core.escapeHtml(item.id)}" title="Favorite">${favorite}</button>` : ""}<button data-delete-item="${kind}:${Core.escapeHtml(item.id)}" title="Delete">×</button></header><p>${Core.escapeHtml(item.content)}</p>${kind==='snippet'?`<button data-snippet-use="${Core.escapeHtml(item.id)}">Use template</button>`:''}<small>${Core.escapeHtml(item.providerName || item.updatedAt?.slice(0, 10) || "Local")}${item.labels?.length ? ` · ${Core.escapeHtml(item.labels.join(", "))}` : ""}</small></article>`;
 }
 
 function renderNotes() {
@@ -162,7 +173,9 @@ function renderNotes() {
 }
 
 function renderSnippets() {
-  $("#snippets-list").innerHTML = state.snippets.length ? state.snippets.map((item) => cardMarkup(item, "snippet")).join("") : `<div class="empty-state">Save prompts you want to reuse.</div>`;
+  const query = $('#snippet-search').value.toLowerCase();
+  const items = state.snippets.filter(item => `${item.title} ${item.content}`.toLowerCase().includes(query));
+  $("#snippets-list").innerHTML = items.length ? items.map((item) => cardMarkup(item, "snippet")).join("") : `<div class="empty-state">Save prompts you want to reuse.</div>`;
 }
 
 function renderLibrary() {
@@ -412,6 +425,7 @@ function bindEvents() {
   $("#utility-toggle").addEventListener("click", () => updateState((draft) => { draft.settings.utilityOpen = !draft.settings.utilityOpen; }));
   $("#note-add").addEventListener("click", () => openItemDialog("note"));
   $("#snippet-add").addEventListener("click", () => openItemDialog("snippet"));
+  $('#snippet-search').addEventListener('input', renderSnippets);
   $("#library-add").addEventListener("click", () => openItemDialog("library"));
   $("#item-form").addEventListener("submit", saveItem);
   $("#library-search").addEventListener("input", renderLibrary);

@@ -1,9 +1,10 @@
 "use strict";
 
-const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, session, shell, net } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { MAX_EXPORT_BYTES, PARTITION_PATTERN, isAllowedProviderUrl, isSafeExternalUrl, validateExport } = require("./src/security");
+const { githubSkills, backupStore, boundedJson } = require('./src/local-services');
 
 function configureProviderSession(partition) {
   if (!PARTITION_PATTERN.test(partition)) return;
@@ -41,6 +42,23 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const backups = backupStore(path.join(app.getPath('userData'), 'organization-backups'));
+  const trusted = event => event.senderFrame === event.sender.mainFrame && event.senderFrame.url === require('node:url').pathToFileURL(path.join(__dirname, 'index.html')).href;
+  function handle(channel, action) {
+    ipcMain.handle(channel, async (event, payload) => {
+      if (!trusted(event)) return { ok: false, error: 'Untrusted caller.' };
+      try { return { ok: true, ...await action(payload) }; } catch (error) { return { ok: false, error: error.message }; }
+    });
+  }
+  handle('skills:github', async url => { if (typeof url !== 'string' || url.length > 2000) throw new Error('Invalid URL.'); return githubSkills(net.fetch, url); });
+  handle('backup:save', async content => ({ name: await backups.save(content) }));
+  handle('backup:list', async () => ({ names: await backups.list() }));
+  handle('backup:read', async name => ({ content: await backups.read(name) }));
+  handle('ollama:request', async payload => {
+    if (payload?.action === 'models') return { data: await boundedJson(fetch, 'http://127.0.0.1:11434/api/tags') };
+    if (payload?.action !== 'generate' || typeof payload.model !== 'string' || payload.model.length > 100 || typeof payload.prompt !== 'string' || payload.prompt.length > 120000) throw new Error('Invalid local AI request.');
+    return { data: await boundedJson(fetch, 'http://127.0.0.1:11434/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: payload.model, prompt: payload.prompt, stream: false }) }) };
+  });
   ipcMain.handle("app:get-meta", () => ({ version: app.getVersion(), platform: process.platform }));
   ipcMain.handle("shell:open-external", async (_event, url) => { if (!isSafeExternalUrl(url)) return { ok: false, error: "Only HTTPS links are allowed." }; await shell.openExternal(url); return { ok: true }; });
   ipcMain.handle("session:clear", async (_event, partition) => { if (!PARTITION_PATTERN.test(partition)) return { ok: false, error: "Invalid session." }; await session.fromPartition(partition).clearStorageData(); return { ok: true }; });

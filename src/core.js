@@ -18,7 +18,7 @@
     if (!workspaces.length) return fallback;
     const normalized = { ...fallback, ...candidate, schemaVersion: SCHEMA_VERSION, workspaces };
     normalized.activeWorkspaceId = workspaces.some((item) => item.id === normalized.activeWorkspaceId) ? normalized.activeWorkspaceId : workspaces[0].id;
-    for (const key of ["projects", "labels", "favorites", "notes", "snippets", "library", "handoffs"]) normalized[key] = Array.isArray(candidate[key]) ? candidate[key] : [];
+    for (const key of ["projects", "labels", "favorites", "notes", "snippets", "library", "handoffs", "skills", "packets", "bookmarks", "comparisons", "presets"]) normalized[key] = Array.isArray(candidate[key]) ? candidate[key] : [];
     normalized.settings = { ...fallback.settings, ...(candidate.settings || {}) };
     normalized.providerSettings = candidate.providerSettings && typeof candidate.providerSettings === "object" ? candidate.providerSettings : {};
     return normalized;

@@ -31,6 +31,14 @@ Electron and electron-builder are development dependencies installed from npm. R
 - Popups are denied; safe HTTPS destinations are delegated to the system browser.
 - No remote debugging interface is enabled in packaged builds.
 
+## Skills, local AI, and backups
+
+Imported skills are untrusted plain text, never scripts or privileged plugins. Public GitHub imports use fixed `api.github.com` routes with bounded responses and no application-provided credentials. All content is previewed before saving, copying, or preparing a composer. Supporting files and executable skill commands are not fetched or run. Applying a skill to a provider still exposes its instructions to that model, so inspect the content before sharing sensitive context.
+
+Ollama IPC is restricted to model listing and generation on `127.0.0.1:11434`; the renderer cannot supply a network destination. The user chooses the model and exact material. Local inference is optional; it does not grant access to browser sessions. A local process controlling that port can see submitted material.
+
+Organization backups contain workspace metadata and locally saved content, including skills and notes. They exclude provider partitions and credentials, are written atomically in the OS app profile, and retain ten snapshots. They are not encrypted. Backup and integration IPC requires the trusted app's main frame and returns structured errors. Provider pages cannot invoke these operations.
+
 ## Reporting
 
 Report suspected vulnerabilities privately to the repository owner. Do not include provider cookies, session tokens, passwords, exported conversations, or other personal data in an issue.

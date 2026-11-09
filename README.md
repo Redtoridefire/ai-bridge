@@ -57,6 +57,22 @@ Artifacts are written to `dist/`:
 
 The installer is unsigned. Windows SmartScreen may warn about unsigned community builds. Production distributors should configure their own code-signing certificate through electron-builder's supported environment settings; never commit signing credentials.
 
+## Skills and workspace tools (1.2)
+
+Open **Skills & tools** in the left sidebar:
+
+- **Skills:** create reusable instructions, search them, favorite them, and review/edit their source text. Choose **Import from GitHub** and paste a public repository URL to discover `SKILL.md` files, or paste a GitHub file URL to preview one directly. Review the content and attribution, then save it locally. Reimporting the same source updates its existing item after review. Files referenced by a skill are not automatically downloaded or executed. Repository licenses and provider policies still apply.
+- **Context:** save reusable project briefs containing goals, constraints, decisions, and notes. Use `{{project}}` or other named fields in skills, context packets, and snippets. **Use** opens an editable preview; fill fields, then copy or explicitly prepare the result in a selected provider composer. Final submission stays manual.
+- **Bookmarks:** save an HTTPS conversation URL, title, and notes. **Layout → Bookmark current URL** captures a panel's current page. Opening a bookmark navigates a matching provider panel only after confirmation. A bookmark does not archive the conversation content.
+- **Compare notes:** paste a response you selected, name its provider/account, and add your evaluation in the content. Multiple entries form a searchable comparison notebook with provenance; nothing scrapes all responses automatically.
+- **Presets:** save the current workspace's account labels, provider choices, order, and column ratio. Applying a preset creates a new workspace with fresh isolated account sessions; cookies are never cloned.
+- **Backups:** organization changes are automatically backed up after a short idle period. The 10 latest snapshots are retained under the OS user-data directory's `organization-backups` folder. Use **Back up now** or restore a snapshot; restore creates a safety backup first. Cookies, passwords, and provider sessions are excluded. Export JSON separately for backups you want to retain off-device.
+- **Local AI:** optionally connect to Ollama at `http://127.0.0.1:11434`. Install Ollama and download a model separately. Refresh models, choose a task, paste the exact content you want processed, and click **Run locally**. Results can be saved to the library. No model or API key is bundled or required for other features.
+
+Open **Layout** above the provider panels to resize the column split, move a panel earlier, focus one panel, or restore all panels. Layout choices persist. Views stay mounted during workspace changes, preserving live conversations while the app is open. Use **Prompt snippets → Use template** for prompt reuse; `Ctrl+Shift+K` opens the snippets list.
+
+GitHub imports require access to `api.github.com` and are subject to unauthenticated GitHub API limits. Private repositories, automatic skill execution, attached support-file downloads, detached windows, and drag-and-drop arrangement are not included. Skill text is rendered as plain text; importing it does not grant filesystem or shell capabilities.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
@@ -88,7 +104,7 @@ Local search only covers content the user explicitly saves or imports. It does n
 - Extraction adapters are best effort for ChatGPT, Claude, Gemini, and Copilot. Grok, DeepSeek, Perplexity, and Google AI Studio default to manual extraction until tested selectors can be maintained responsibly.
 - Compare mode prepares prompts but leaves final submission to the user in every panel.
 - Conversation search covers saved/imported content only.
-- Detachable provider windows and optional Ollama summaries remain roadmap items.
+- Detachable provider windows remain a roadmap item. Optional Ollama processing is available through Skills & tools.
 - Linux cloud containers that disable user namespaces may require Electron's `--no-sandbox` flag for development. Packaged Windows builds use Chromium's normal Windows sandbox; do not add `--no-sandbox` to Windows shortcuts.
 
 ## Development and security
