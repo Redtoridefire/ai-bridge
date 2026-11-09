@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="AI Command Center">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#53e0c1"/><stop offset="1" stop-color="#4fa3ff"/></linearGradient></defs>
+  <rect width="256" height="256" rx="58" fill="#0b1020"/>
+  <path d="M45 74c0-16 13-29 29-29h108c16 0 29 13 29 29v108c0 16-13 29-29 29H74c-16 0-29-13-29-29z" fill="none" stroke="url(#g)" stroke-width="13"/>
+  <path d="M83 161l27-69h19l28 69h-20l-5-15h-28l-5 15zm26-31h18l-9-27zm58-38h18v69h-18z" fill="url(#g)"/>
+</svg>

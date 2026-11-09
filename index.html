@@ -1,178 +1,130 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>AI Bridge</title>
-<style>
-:root{--bg:#0e1420;--panel:#161e2e;--line:#26304a;--ink:#e8edf6;--sub:#8d99b0;--accent:#3EE0C8}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13.5px -apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;height:100vh}
-header{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-header b{color:var(--accent)}
-select,button,input{font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 10px}
-button{cursor:pointer}
-button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);color:#07110e;border-color:var(--accent);font-weight:600}
-.tabs{display:flex;gap:6px;flex-wrap:wrap}
-.tab{padding:5px 12px;border:1px solid var(--line);border-radius:6px;cursor:pointer;color:var(--sub)}
-.tab.left{border-left:3px solid var(--accent);color:var(--ink)}
-.tab.right{border-right:3px solid #F2B441;color:var(--ink)}
-.tab .x{margin-left:8px;color:var(--sub)}
-.tab .x:hover{color:#e0705e}
-.hint{color:var(--sub);font-size:12px;width:100%}
-.panes{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
-.paneWrap{background:var(--bg);display:flex;flex-direction:column;min-width:0}
-.paneLabel{padding:3px 10px;font-size:12px;color:var(--sub);background:var(--panel)}
-webview{flex:1;width:100%}
-#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--accent);color:#07110e;padding:8px 18px;border-radius:8px;font-weight:600;display:none;z-index:9}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <title>AI Command Center</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header>
-  <b>AI Bridge</b>
-  <div class="tabs" id="tabs"></div>
-  <button onclick="addPane()">+ Add account</button>
-  <span style="flex:1"></span>
-  <button class="primary" onclick="share()">Share left ➜ right</button>
-  <button onclick="share(true)">Share right ➜ left</button>
-  <span class="hint">Click a tab to show it on the LEFT · Ctrl+click for the RIGHT · log in normally inside each pane — sessions are isolated per account and persist.</span>
-</header>
-<div class="panes">
-  <div class="paneWrap"><div class="paneLabel" id="labL">—</div><div id="slotL" style="flex:1;display:flex"></div></div>
-  <div class="paneWrap"><div class="paneLabel" id="labR">—</div><div id="slotR" style="flex:1;display:flex"></div></div>
-</div>
-<div id="toast"></div>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <div class="brand"><span class="brand-mark">AI</span><div><strong>Command Center</strong><small>Local workspace</small></div></div>
+      <label class="field-label" for="workspace-select">Workspace</label>
+      <div class="inline-field"><select id="workspace-select" aria-label="Active workspace"></select><button id="workspace-add" class="icon-button" title="New workspace">+</button></div>
+      <nav class="sidebar-actions" aria-label="Local tools">
+        <button data-utility-tab="library"><span>⌕</span> Local library</button>
+        <button data-utility-tab="notes"><span>✎</span> Notes</button>
+        <button data-utility-tab="snippets"><span>◇</span> Prompt snippets</button>
+      </nav>
+      <div class="section-heading"><span>Providers</span><button id="add-panel" class="text-button">+ account</button></div>
+      <div id="provider-list" class="provider-list"></div>
+      <div class="sidebar-footer"><button id="settings-open">⚙ Settings</button><button id="data-export">⇩ Export</button></div>
+    </aside>
 
-<script>
-"use strict";
-const PLATFORMS={ "Claude":"https://claude.ai", "ChatGPT":"https://chatgpt.com", "Gemini":"https://gemini.google.com", "Copilot":"https://copilot.microsoft.com" };
-const LS="aibridge.panes";
-let panes=JSON.parse(localStorage.getItem(LS)||"null")||[
-  {id:"p1",platform:"Claude",label:"Claude — account 1"},
-  {id:"p2",platform:"ChatGPT",label:"ChatGPT"}
-];
-let left=panes[0]?.id, right=panes[1]?.id;
-const views={}; // id -> webview element (kept alive, just re-slotted)
+    <section class="center-column">
+      <header class="topbar">
+        <div class="mode-switcher" role="tablist" aria-label="Interaction mode">
+          <button data-mode="independent" role="tab">Independent</button>
+          <button data-mode="compare" role="tab">Compare</button>
+          <button data-mode="handoff" role="tab">Handoff</button>
+        </div>
+        <div class="top-actions"><button id="workspace-rename" class="quiet">Rename</button><button id="utility-toggle" class="quiet">Utility panel</button></div>
+      </header>
 
-function save(){ localStorage.setItem(LS,JSON.stringify(panes)); }
-function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.display="block"; setTimeout(()=>t.style.display="none",2500); }
+      <section id="compare-bar" class="workflow-bar" hidden>
+        <div><strong>Compare with selected providers</strong><p>AI Command Center prepares the same prompt in each composer. Review it in every provider and submit it yourself.</p></div>
+        <div id="compare-targets" class="target-list"></div>
+        <textarea id="compare-prompt" rows="2" placeholder="Prompt to prepare for comparison"></textarea>
+        <button id="compare-prepare" class="primary">Prepare in selected panels</button>
+      </section>
 
-function getView(p){
-  if(views[p.id]) return views[p.id];
-  const w=document.createElement("webview");
-  w.src=PLATFORMS[p.platform];
-  // ponytail: persist:<id> = isolated cookie jar per pane — this is what allows 2 Claude accounts at once
-  w.setAttribute("partition","persist:"+p.id);
-  w.setAttribute("allowpopups","");
-  views[p.id]=w;
-  return w;
-}
+      <section id="handoff-bar" class="workflow-bar" hidden>
+        <div><strong>Controlled handoff</strong><p>Extract what is available, review and redact it, then explicitly choose where it goes.</p></div>
+        <button id="handoff-open" class="primary">Create handoff</button>
+      </section>
 
-function render(){
-  const tabs=document.getElementById("tabs"); tabs.innerHTML="";
-  panes.forEach(p=>{
-    const t=document.createElement("span");
-    t.className="tab"+(p.id===left?" left":"")+(p.id===right?" right":"");
-    t.textContent=p.label;
-    const x=document.createElement("span"); x.className="x"; x.textContent="×";
-    x.onclick=e=>{e.stopPropagation();
-      if(!confirm("Remove \""+p.label+"\"? (Its login session cookie jar stays on disk and returns if re-added with the same slot number.)"))return;
-      panes=panes.filter(q=>q.id!==p.id); delete views[p.id];
-      if(left===p.id)left=panes[0]?.id; if(right===p.id)right=panes.find(q=>q.id!==left)?.id;
-      save(); render();
-    };
-    t.appendChild(x);
-    t.onclick=e=>{ if(e.ctrlKey){right=p.id;} else {left=p.id; if(right===p.id) right=panes.find(q=>q.id!==p.id)?.id;} render(); };
-    tabs.appendChild(t);
-  });
-  slot("slotL","labL",left,"LEFT");
-  slot("slotR","labR",right,"RIGHT");
-}
-function slot(slotId,labId,paneId,side){
-  const s=document.getElementById(slotId);
-  // move, never destroy — destroying a webview reloads it
-  Array.from(s.children).forEach(c=>{ if(c!==views[paneId]) s.removeChild(c); });
-  const p=panes.find(q=>q.id===paneId);
-  document.getElementById(labId).textContent=p?(side+" · "+p.label):"— add a pane —";
-  if(p){ const v=getView(p); if(v.parentElement!==s) s.appendChild(v); }
-}
+      <main id="panel-grid" class="panel-grid" aria-live="polite"></main>
+      <footer class="statusbar"><span id="global-status">Ready · data stays on this device</span><span id="app-version"></span></footer>
+    </section>
 
-function addPane(){
-  const plat=prompt("Platform? (Claude / ChatGPT / Gemini / Copilot)","Claude");
-  if(!plat||!PLATFORMS[plat.trim()])return alert("Pick one of: "+Object.keys(PLATFORMS).join(", "));
-  const label=prompt("Label (e.g. 'Claude — work account'):",plat.trim())||plat.trim();
-  const id="p"+Date.now();
-  panes.push({id,platform:plat.trim(),label});
-  if(!left)left=id; else if(!right)right=id;
-  save(); render();
-}
+    <aside id="utility-panel" class="utility-panel" aria-label="Local utility panel">
+      <div class="utility-tabs">
+        <button data-tab="notes">Notes</button><button data-tab="library">Library</button><button data-tab="snippets">Snippets</button>
+      </div>
+      <section id="utility-notes" class="utility-view">
+        <div class="utility-heading"><div><strong>Workspace notes</strong><small>Saved locally</small></div><button id="note-add">+</button></div>
+        <div id="notes-list" class="card-list"></div>
+      </section>
+      <section id="utility-library" class="utility-view" hidden>
+        <div class="utility-heading"><div><strong>Local library</strong><small>Only content you save or import</small></div><button id="library-add">+</button></div>
+        <input id="library-search" type="search" placeholder="Search title, content, or labels">
+        <div class="filters"><select id="library-provider-filter"><option value="">All providers</option></select><select id="library-project-filter"><option value="">All projects</option></select></div>
+        <div id="library-results" class="card-list"></div>
+      </section>
+      <section id="utility-snippets" class="utility-view" hidden>
+        <div class="utility-heading"><div><strong>Prompt snippets</strong><small>Reusable and unlimited</small></div><button id="snippet-add">+</button></div>
+        <div id="snippets-list" class="card-list"></div>
+      </section>
+    </aside>
+  </div>
 
-/* ---- sharing ---- */
-const EXTRACT=`(function(){
-  /* per-site user/assistant selector pairs — capture BOTH sides, labeled, in order */
-  var sites=[
-    {u:'[data-testid="user-message"]', a:'.font-claude-message, .font-claude-response, [data-testid="assistant-message"], [data-test-render-count] .standard-markdown'}, /* claude.ai */
-    {u:'[data-message-author-role="user"]', a:'[data-message-author-role="assistant"]'},  /* chatgpt */
-    {u:'user-query', a:'message-content'},                                                /* gemini */
-    {u:'[data-content="user-message"]', a:'[data-content="ai-message"]'}                  /* copilot */
-  ];
-  var t="";
-  for(var i=0;i<sites.length;i++){
-    var s=sites[i], els=document.querySelectorAll(s.u+", "+s.a);
-    if(els.length){
-      var seen=[], out=[];
-      els.forEach(function(e){
-        /* skip elements nested inside an already-captured element (selector overlap) */
-        for(var j=0;j<seen.length;j++){ if(seen[j].contains(e)) return; }
-        seen.push(e);
-        var role=e.matches(s.u) ? "USER" : "ASSISTANT";
-        var txt=e.innerText.trim();
-        if(txt) out.push(role+":\\n"+txt);
-      });
-      t=out.join("\\n\\n");
-      if(t.length>=20) break;
-    }
-  }
-  /* fallback: main content minus sidebar/nav */
-  if(t.length<20){
-    var m=(document.querySelector('main')||document.body).cloneNode(true);
-    m.querySelectorAll('nav,aside,header,[class*="sidebar" i],[class*="nav" i]').forEach(function(n){n.remove();});
-    t=m.innerText||"";
-  }
-  /* keep up to ~120k chars (roughly 30k tokens); trim from the START so the newest context survives */
-  return t.length>120000 ? "[...earlier conversation trimmed...]\\n"+t.slice(-120000) : t;
-})()`;
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-function insertScript(text){
-  const payload=JSON.stringify(
-    "You are taking over an in-progress conversation from another AI assistant whose usage limit was reached. Below is the transcript (most recent part). Continue the work from where it left off — do not restart or re-explain.\n\n---TRANSCRIPT---\n"+text
-  );
-  // ponytail: selector list per site, generic fallback last — brittle by nature, update when a site redesigns
-  return `(function(){
-    var sels=['div[contenteditable="true"].ProseMirror','#prompt-textarea','div[contenteditable="true"]','rich-textarea div[contenteditable="true"]','textarea'];
-    var el=null;
-    for(var i=0;i<sels.length;i++){ var c=document.querySelectorAll(sels[i]); if(c.length){ el=c[c.length-1]; break; } }
-    if(!el) return "NOINPUT";
-    el.focus();
-    document.execCommand("selectAll",false,null);
-    document.execCommand("insertText",false,${payload});
-    return "OK";
-  })()`;
-}
+  <dialog id="panel-dialog">
+    <form method="dialog" id="panel-form" class="dialog-form">
+      <header><div><h2>Add provider account</h2><p>Each account gets its own persistent, isolated browser session.</p></div><button value="cancel" formnovalidate class="icon-button" aria-label="Close">×</button></header>
+      <label>Provider<select id="panel-provider" required></select></label>
+      <label>Account label<input id="panel-label" maxlength="60" required placeholder="e.g. Claude — work"></label>
+      <footer><button value="cancel" formnovalidate>Cancel</button><button id="panel-confirm" value="default" class="primary">Add panel</button></footer>
+    </form>
+  </dialog>
 
-async function share(reverse){
-  const srcId=reverse?right:left, dstId=reverse?left:right;
-  const src=views[srcId], dst=views[dstId];
-  if(!src||!dst) return toast("Need two panes open");
-  try{
-    const text=await src.executeJavaScript(EXTRACT);
-    if(!text||text.trim().length<20) return toast("Nothing to share in source pane");
-    const res=await dst.executeJavaScript(insertScript(text));
-    toast(res==="OK" ? "Dropped into target input — review and press Enter there" : "Couldn't find target input box — is a chat open?");
-  }catch(e){ toast("Share failed: "+e.message); }
-}
+  <dialog id="handoff-dialog" class="wide-dialog">
+    <form method="dialog" id="handoff-form" class="dialog-form">
+      <header><div><h2>Review handoff</h2><p>Nothing is sent automatically. Inspect and redact the exact content first.</p></div><button value="cancel" formnovalidate class="icon-button" aria-label="Close">×</button></header>
+      <div class="form-grid"><label>Source<select id="handoff-source"></select></label><label>Destination<select id="handoff-destination"></select></label><label>Scope<select id="handoff-scope"><option value="conversation">Available conversation</option><option value="selection">Current text selection</option><option value="summary">Summary request</option></select></label></div>
+      <div class="inline-actions"><button type="button" id="handoff-extract">Load from source</button><span id="handoff-capability" class="muted"></span></div>
+      <label>Exact content to share<textarea id="handoff-content" rows="13" maxlength="120000" placeholder="Load available content, or paste it manually here."></textarea></label>
+      <label class="check-row"><input type="checkbox" id="handoff-save-local"> Save a copy to my local library</label>
+      <label class="check-row"><input type="checkbox" id="handoff-try-insert" checked> Try to populate the destination composer (clipboard fallback is always available)</label>
+      <footer><button value="cancel" formnovalidate>Cancel without sharing</button><button id="handoff-confirm" value="default" class="primary">Copy and open destination</button></footer>
+    </form>
+  </dialog>
 
-render();
-</script>
+  <dialog id="item-dialog">
+    <form method="dialog" id="item-form" class="dialog-form">
+      <header><div><h2 id="item-title">Add local item</h2><p id="item-description">Stored only on this device.</p></div><button value="cancel" formnovalidate class="icon-button">×</button></header>
+      <label>Title<input id="item-name" maxlength="100" required></label>
+      <label>Content<textarea id="item-content" rows="8" maxlength="120000" required></textarea></label>
+      <div id="library-fields"><label>Provider<select id="item-provider"><option value="">Unspecified</option></select></label><label>Project<select id="item-project"><option value="">No project</option></select></label><label>Labels<input id="item-labels" placeholder="research, work, favorite"></label><label class="check-row"><input id="item-favorite" type="checkbox"> Favorite</label></div>
+      <footer><button value="cancel" formnovalidate>Cancel</button><button id="item-confirm" value="default" class="primary">Save locally</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog" class="wide-dialog">
+    <form method="dialog" id="settings-form" class="dialog-form">
+      <header><div><h2>Settings</h2><p>Provider sessions remain in Electron's isolated profile storage.</p></div><button value="cancel" formnovalidate class="icon-button">×</button></header>
+      <label>Appearance<select id="theme-select"><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select></label>
+      <div><h3>Providers</h3><div id="provider-settings" class="provider-settings"></div></div>
+      <div><h3>Projects and labels</h3><p class="muted">Comma-separated. There are no app-level quotas.</p><label>Projects<input id="projects-input"></label><label>Labels<input id="labels-input"></label></div>
+      <div class="danger-zone"><h3>Local data</h3><button type="button" id="export-json">Export JSON</button><button type="button" id="export-markdown">Export Markdown</button><button type="button" id="export-html">Export HTML</button><button type="button" id="data-import">Import JSON</button><button type="button" id="clear-workspace-data" class="danger">Clear organization data</button></div>
+      <footer><button value="cancel" formnovalidate>Cancel</button><button id="settings-save" value="default" class="primary">Save settings</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="onboarding-dialog">
+    <form method="dialog" class="dialog-form onboarding">
+      <span class="brand-mark large">AI</span><h2>Your AI services, one local workspace</h2>
+      <p>Sign in directly on each provider's real website. AI Command Center does not ask for API keys, create a dashboard account, or read passwords.</p>
+      <ul><li>Independent sessions per account</li><li>Explicit compare and handoff controls</li><li>Local notes, search, labels, and exports</li></ul>
+      <button id="onboarding-finish" value="default" class="primary">Open my workspace</button>
+    </form>
+  </dialog>
+
+  <script src="src/providers.js"></script>
+  <script src="src/core.js"></script>
+  <script src="renderer.js"></script>
 </body>
 </html>
