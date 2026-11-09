@@ -6,7 +6,54 @@
   "use strict";
   const SCHEMA_VERSION = 1;
   const MAX_PANELS = 4;
-  function id(prefix = "id") { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`; }
+  const PROVIDERS = new Set(['chatgpt','claude','grok','gemini','deepseek','perplexity','copilot','aistudio']);
+  function validateState(candidate) {
+    const identifier=value=>typeof value==='string' && /^[a-zA-Z0-9_-]{1,80}$/.test(value);
+    function walk(value) {
+      if(value===null||typeof value==='boolean'||typeof value==='number'||typeof value==='string')return;
+      if(Array.isArray(value)){value.forEach(walk);return;}
+      if(!value||typeof value!=='object')throw new Error('Invalid organization data.');
+      for(const [key,entry] of Object.entries(value)){
+        if(['__proto__','prototype','constructor'].includes(key))throw new Error('Unsafe data property.');
+        if(key!=='provenanceId' && (key==='id'||key.endsWith('Id')) && entry!=='' && !identifier(entry))throw new Error('Invalid identifier.');
+        walk(entry);
+      }
+    }
+    walk(candidate);
+    if(candidate.schemaVersion!==undefined&&candidate.schemaVersion!==SCHEMA_VERSION)throw new Error('Unsupported organization schema version.');
+    if(candidate.settings!==undefined){if(!candidate.settings||typeof candidate.settings!=='object'||Array.isArray(candidate.settings))throw new Error('Invalid settings.');for(const key of ['onboardingComplete','utilityOpen'])if(candidate.settings[key]!==undefined&&typeof candidate.settings[key]!=='boolean')throw new Error('Invalid settings flag.');}
+    if(candidate.providerSettings!==undefined){
+      if(!candidate.providerSettings||typeof candidate.providerSettings!=='object'||Array.isArray(candidate.providerSettings))throw new Error('Invalid provider settings.');
+      for(const [provider,settings]of Object.entries(candidate.providerSettings))if(!PROVIDERS.has(provider)||!settings||typeof settings!=='object'||Array.isArray(settings)||(settings.enabled!==undefined&&typeof settings.enabled!=='boolean')||(settings.displayName!==undefined&&typeof settings.displayName!=='string'))throw new Error('Invalid provider settings.');
+    }
+    if(!Array.isArray(candidate.workspaces)||!candidate.workspaces.length)throw new Error('At least one valid workspace is required.');
+    const workspaceIds=new Set(),panelIds=new Set();
+    for(const workspace of candidate.workspaces){
+      if(!identifier(workspace.id)||workspaceIds.has(workspace.id)||typeof workspace.name!=='string'||!Array.isArray(workspace.panels)||workspace.panels.length>MAX_PANELS)throw new Error('Invalid or duplicate workspace.');
+      workspaceIds.add(workspace.id);
+      if(workspace.ratio!==undefined && (typeof workspace.ratio!=='number'||workspace.ratio<25||workspace.ratio>75))throw new Error('Invalid layout ratio.');
+      for(const panel of workspace.panels){
+        if(typeof panel.id!=='string'||!/^[a-z0-9-]{1,70}$/.test(panel.id)||panelIds.has(panel.id)||!PROVIDERS.has(panel.providerId)||typeof panel.accountLabel!=='string')throw new Error('Invalid or duplicate provider account.');
+        panelIds.add(panel.id);
+      }
+    }
+    for(const key of ['projects','labels','favorites','notes','snippets','library','handoffs','skills','packets','bookmarks','comparisons','presets']){
+      if(candidate[key]!==undefined&&!Array.isArray(candidate[key]))throw new Error(`Invalid ${key} collection.`);
+      const itemIds=new Set();
+      for(const item of candidate[key]||[]){
+        if(!item||typeof item!=='object'||!identifier(item.id))throw new Error(`Invalid ${key} item.`);
+        if(itemIds.has(item.id))throw new Error(`Duplicate ${key} identifier.`);itemIds.add(item.id);
+        for(const field of ['title','name','content','source','url','providerName','updatedAt','createdAt'])if(item[field]!==undefined&&typeof item[field]!=='string')throw new Error(`Invalid ${key} text field.`);
+        if(item.labels!==undefined&&(!Array.isArray(item.labels)||item.labels.some(label=>typeof label!=='string')))throw new Error('Invalid labels.');
+        if(key==='bookmarks'){const url=new URL(item.url);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Invalid bookmark.');}
+        if(key==='presets'&&(!Array.isArray(item.panels)||item.panels.length>MAX_PANELS||item.panels.some(panel=>!PROVIDERS.has(panel.providerId)||typeof panel.accountLabel!=='string')))throw new Error('Invalid preset.');
+      }
+    }
+    if(candidate.mode!==undefined&&!['independent','compare','handoff'].includes(candidate.mode))throw new Error('Invalid interaction mode.');
+    if(candidate.theme!==undefined&&!['dark','light','system'].includes(candidate.theme))throw new Error('Invalid theme.');
+    return candidate;
+  }
+  function id(prefix = "id") { return `${prefix}-${globalThis.crypto.randomUUID()}`; }
   function defaultState() {
     const workspaceId = "workspace-default";
     return { schemaVersion: SCHEMA_VERSION, theme: "dark", mode: "independent", activeWorkspaceId: workspaceId, providerSettings: {}, workspaces: [{ id: workspaceId, name: "Main workspace", panels: [{ id: "panel-claude", providerId: "claude", accountLabel: "Claude — account 1" }, { id: "panel-chatgpt", providerId: "chatgpt", accountLabel: "ChatGPT — account 1" }] }], projects: [], labels: [], favorites: [], notes: [], snippets: [], library: [], handoffs: [], settings: { onboardingComplete: false, utilityOpen: true } };
@@ -16,6 +63,7 @@
     if (!candidate || typeof candidate !== "object") return fallback;
     const workspaces = Array.isArray(candidate.workspaces) ? candidate.workspaces.filter((item) => item && typeof item.id === "string") : [];
     if (!workspaces.length) return fallback;
+    validateState(candidate);
     const normalized = { ...fallback, ...candidate, schemaVersion: SCHEMA_VERSION, workspaces };
     normalized.activeWorkspaceId = workspaces.some((item) => item.id === normalized.activeWorkspaceId) ? normalized.activeWorkspaceId : workspaces[0].id;
     for (const key of ["projects", "labels", "favorites", "notes", "snippets", "library", "handoffs", "skills", "packets", "bookmarks", "comparisons", "presets"]) normalized[key] = Array.isArray(candidate[key]) ? candidate[key] : [];
@@ -37,7 +85,7 @@
     });
   }
   function exportPayload(state) { return { product: "AI Command Center", schemaVersion: SCHEMA_VERSION, exportedAt: new Date().toISOString(), data: state }; }
-  function importPayload(raw) { const payload = typeof raw === "string" ? JSON.parse(raw) : raw; if (!payload || payload.product !== "AI Command Center" || !payload.data) throw new Error("This is not an AI Command Center export."); return normalizeState(payload.data); }
+  function importPayload(raw) { const payload = typeof raw === "string" ? JSON.parse(raw) : raw; if (!payload || payload.product !== "AI Command Center" || !payload.data) throw new Error("This is not an AI Command Center export."); validateState(payload.data);return normalizeState(payload.data); }
   function messageText(message) {
     const content = message?.content;
     if (Array.isArray(content?.parts)) return content.parts.filter((part) => typeof part === "string").join("\n");
@@ -47,7 +95,7 @@
   }
   function importDocument(raw) {
     const payload = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (payload?.product === "AI Command Center" && payload.data) return { kind: "workspace", state: normalizeState(payload.data) };
+    if (payload?.product === "AI Command Center" && payload.data) return { kind: "workspace", state: importPayload(payload) };
     if (!Array.isArray(payload)) throw new Error("Unsupported JSON import. Choose an AI Command Center, ChatGPT, or Claude export.");
     const importedAt = new Date().toISOString();
     if (payload.some((conversation) => conversation?.mapping)) {
@@ -68,5 +116,5 @@
     throw new Error("Unsupported provider export. Current import adapters support ChatGPT and Claude JSON exports.");
   }
   function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
-  return Object.freeze({ SCHEMA_VERSION, MAX_PANELS, id, defaultState, normalizeState, activeWorkspace, addPanel, searchLibrary, exportPayload, importPayload, importDocument, escapeHtml });
+  return Object.freeze({ SCHEMA_VERSION, MAX_PANELS, id, validateState, defaultState, normalizeState, activeWorkspace, addPanel, searchLibrary, exportPayload, importPayload, importDocument, escapeHtml });
 });

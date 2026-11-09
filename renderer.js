@@ -10,7 +10,8 @@ const bridge = window.commandCenter || {
   openImport: async () => ({ ok: false, error: "Native import is only available in the desktop app." }),
 };
 const viewCache = new Map();
-let state = loadState();
+let state = Core.normalizeState(Core.defaultState());
+let storageWritable = false;
 let utilityTab = "notes";
 let itemKind = "note";
 let toastTimer;
@@ -20,22 +21,18 @@ const comparisonTargets = new Map();
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return Core.normalizeState(JSON.parse(saved));
-    const legacy = JSON.parse(localStorage.getItem("aibridge.panes") || "null");
-    if (Array.isArray(legacy) && legacy.length) {
-      const migrated = Core.defaultState();
-      migrated.workspaces[0].panels = legacy.map((pane) => ({ id: `panel-${String(pane.id).replace(/[^a-z0-9-]/gi, "").toLowerCase()}`, providerId: String(pane.platform || "").toLowerCase(), accountLabel: pane.label || pane.platform }));
-      return Core.normalizeState(migrated);
-    }
-  } catch (error) { console.warn("Could not load local state", error); }
-  return Core.normalizeState(Core.defaultState());
+async function loadState() {
+  try{
+    const result=await bridge.loadState();
+    if(!result.ok)throw new Error(result.error);
+    storageWritable=result.encrypted&&!result.migrationError;
+    if(result.content)state=Core.importPayload(result.content);
+    $('#privacy-status').textContent=storageWritable?'Organization data protected by OS encryption. Exports and clipboard copies are plaintext.':`Persistence locked: ${result.migrationError||'OS-protected encryption is unavailable; provider sessions are temporary'}. Export your work before closing.`;
+  }catch(error){storageWritable=false;$('#privacy-status').textContent=`Storage locked: ${error.message}. Existing data has not been overwritten.`;}
 }
 
 function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if(storageWritable)void bridge.saveState(JSON.stringify(Core.exportPayload(state))).then(result=>{if(!result.ok){storageWritable=false;$('#privacy-status').textContent=`Storage locked: ${result.error}. Export before closing.`;}});
 }
 
 function updateState(mutator, { panels = false } = {}) {
@@ -49,7 +46,7 @@ function updateState(mutator, { panels = false } = {}) {
 function currentWorkspace() { return Core.activeWorkspace(state); }
 function providerName(id) { return state.providerSettings[id]?.displayName || byId[id]?.name || id; }
 function isProviderEnabled(id) { return state.providerSettings[id]?.enabled !== false; }
-function partitionFor(panel) { return `persist:aicc-${panel.id.replace(/[^a-z0-9-]/g, "").slice(0, 70)}`; }
+function partitionFor(panel) { return `persist:aicc-${panel.id}`; }
 
 function toast(message) {
   const element = $("#toast");
@@ -92,7 +89,6 @@ function createWebview(panel) {
   const view = document.createElement("webview");
   view.src = provider.url;
   view.setAttribute("partition", partitionFor(panel));
-  view.setAttribute("allowpopups", "");
   view.setAttribute("aria-label", `${providerName(provider.id)} web content`);
   view.addEventListener("did-start-loading", () => updatePanelStatus(panel.id, "Loading…"));
   view.addEventListener("did-stop-loading", () => updatePanelStatus(panel.id, "Connected"));
@@ -136,6 +132,7 @@ function renderPanels() {
     wrapper.dataset.providerId = panel.providerId;
     wrapper.style.order = index;
     wrapper.innerHTML = `<header class="panel-header"><span class="provider-dot" style="background:${provider.color}"></span><strong title="${Core.escapeHtml(panel.accountLabel)}">${Core.escapeHtml(panel.accountLabel)}</strong><span class="panel-status" data-panel-status="${panel.id}">Ready</span><button data-panel-back="${panel.id}" title="Back">←</button><button data-panel-reload="${panel.id}" title="Reload">↻</button><button data-panel-remove="${panel.id}" title="Remove panel">×</button></header><div class="webview-slot"></div>`;
+    const external=document.createElement('button');external.textContent='↗';external.title='Open in default browser (requires confirmation)';external.dataset.panelBrowser=panel.id;wrapper.querySelector('.panel-header').append(external);
     wrapper.querySelector(".webview-slot").append(createWebview(panel));
     grid.append(wrapper);
   });
@@ -220,35 +217,24 @@ function removePanel(panelId) {
   const view = viewCache.get(panelId); if (view) view.remove(); viewCache.delete(panelId);
 }
 
-function buildExtractScript(provider, scope) {
-  if (scope === "selection") return `String(window.getSelection ? window.getSelection().toString() : "").slice(0,120000)`;
-  const user = JSON.stringify(provider.selectors.user);
-  const assistant = JSON.stringify(provider.selectors.assistant);
-  return `(function(){const us=${user},as=${assistant};const selectors=us.concat(as);if(!selectors.length)return "";const nodes=[...document.querySelectorAll(selectors.join(","))];const seen=[];const rows=[];for(const node of nodes){if(seen.some(parent=>parent.contains(node)))continue;seen.push(node);const text=(node.innerText||"").trim();if(!text)continue;const role=us.some(selector=>{try{return node.matches(selector)}catch{return false}})?"USER":"ASSISTANT";rows.push(role+":\\n"+text)}const result=rows.join("\\n\\n");return result.length>120000?"[Earlier content trimmed]\\n"+result.slice(-120000):result})()`;
-}
-
-function buildInsertScript(provider, content) {
-  return `(function(){const selectors=${JSON.stringify(provider.selectors.composer)};let target=null;for(const selector of selectors){const matches=document.querySelectorAll(selector);if(matches.length){target=matches[matches.length-1];break}}if(!target)return "NO_INPUT";target.focus();const value=${JSON.stringify(content)};if(target.tagName==="TEXTAREA"||target.tagName==="INPUT"){const setter=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target),"value")?.set;setter?setter.call(target,value):(target.value=value);target.dispatchEvent(new Event("input",{bubbles:true}))}else{document.execCommand("selectAll",false,null);document.execCommand("insertText",false,value);target.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText",data:value}))}return "PREPARED"})()`;
-}
 
 async function prepareComparison() {
   const prompt = $("#compare-prompt").value.trim();
   const targets = $$("#compare-targets input:checked").map((input) => input.value);
   if (!prompt || targets.length < 2) return toast("Enter a prompt and select at least two panels");
-  await navigator.clipboard.writeText(prompt);
   let prepared = 0;
   for (const panelId of targets) {
     const panel = currentWorkspace().panels.find((item) => item.id === panelId);
     const provider = byId[panel?.providerId];
     const view = viewCache.get(panelId);
-    if (!provider || !view || provider.capabilities.insert === "manual") { updatePanelStatus(panelId, "Copied · paste manually"); continue; }
+    if (!provider || !view || provider.capabilities.insert === "manual") { updatePanelStatus(panelId, "Manual preparation required"); continue; }
     try {
-      const result = await view.executeJavaScript(buildInsertScript(provider, prompt), true);
+      const result = await providerAction(panel,'insert',prompt);
       if (result === "PREPARED") { prepared += 1; updatePanelStatus(panelId, "Prompt ready · review"); }
-      else updatePanelStatus(panelId, "Copied · paste manually");
-    } catch { updatePanelStatus(panelId, "Copied · paste manually"); }
+      else updatePanelStatus(panelId, "Not shared · paste manually");
+    } catch { updatePanelStatus(panelId, "Not shared / canceled"); }
   }
-  setStatus(`Comparison prepared in ${prepared}/${targets.length} panels · prompt also copied`);
+  setStatus(`Comparison prepared in ${prepared}/${targets.length} panels · clipboard unchanged`);
   toast("Review each provider, then submit in its own panel");
 }
 
@@ -271,11 +257,10 @@ async function extractHandoff() {
   const provider = byId[panel?.providerId];
   const view = viewCache.get(panel?.id);
   if (!provider || !view || (provider.capabilities.extract === "manual" && $("#handoff-scope").value !== "selection")) {
-    await navigator.clipboard.writeText("Paste the selected provider conversation into the handoff preview, then review and redact it.");
-    return toast("Automatic extraction is unavailable; instructions copied");
+    return toast("Extraction unavailable; paste selected content into the preview manually");
   }
   try {
-    let content = await view.executeJavaScript(buildExtractScript(provider, $("#handoff-scope").value), true);
+    let content = await providerAction(panel,'extract',undefined,$('#handoff-scope').value);
     if ($("#handoff-scope").value === "summary" && content) content = `Please summarize this conversation for a handoff while preserving decisions, constraints, and open tasks:\n\n${content}`;
     if (!content?.trim()) return toast("No supported content found; paste it manually");
     $("#handoff-content").value = content; toast("Content loaded — review and redact it");
@@ -293,7 +278,7 @@ async function confirmHandoff(event) {
   let inserted = false;
   const provider = byId[destination.providerId];
   if ($("#handoff-try-insert").checked && provider.capabilities.insert !== "manual") {
-    try { inserted = await viewCache.get(destination.id)?.executeJavaScript(buildInsertScript(provider, content), true) === "PREPARED"; } catch { inserted = false; }
+    try { inserted = await providerAction(destination,'insert',content) === "PREPARED"; } catch { inserted = false; }
   }
   updateState((draft) => {
     draft.handoffs.unshift({ id: Core.id("handoff"), sourceProviderId: source.providerId, destinationProviderId: destination.providerId, scope: $("#handoff-scope").value, characterCount: content.length, createdAt: new Date().toISOString() });
@@ -338,6 +323,7 @@ function deleteItem(kind, id) {
 }
 
 function openSettings() {
+  $('#privacy-account').innerHTML=currentWorkspace().panels.map(panel=>`<option value="${Core.escapeHtml(panel.id)}">${Core.escapeHtml(panel.accountLabel)}</option>`).join('');
   $("#theme-select").value = state.theme;
   $("#provider-settings").innerHTML = providers.map((provider) => `<div class="provider-setting"><input type="checkbox" data-provider-enabled="${provider.id}" ${isProviderEnabled(provider.id) ? "checked" : ""} aria-label="Enable ${provider.name}"><input type="text" data-provider-name="${provider.id}" value="${Core.escapeHtml(providerName(provider.id))}" maxlength="40"><small>${provider.capabilities.compare}</small></div>`).join("");
   $("#projects-input").value = state.projects.map((project) => project.name).join(", ");
@@ -438,13 +424,17 @@ function bindEvents() {
   $("#export-markdown").addEventListener("click", () => exportData("md"));
   $("#export-html").addEventListener("click", () => exportData("html"));
   $("#data-import").addEventListener("click", importData);
-  $("#clear-workspace-data").addEventListener("click", () => { if (!confirm("Clear local notes, snippets, library items, projects, labels, favorites, and handoff metadata? Login sessions remain intact.")) return; updateState((draft) => { draft.projects = []; draft.labels = []; draft.favorites = []; draft.notes = []; draft.snippets = []; draft.library = []; draft.handoffs = []; }); toast("Local organization data cleared"); });
+  $("#clear-workspace-data").addEventListener("click", () => { if (!confirm("Clear all saved organization content? Account layouts and login sessions remain. Retained backups must be erased separately.")) return; updateState((draft) => { for(const key of ['projects','labels','favorites','notes','snippets','library','handoffs','skills','packets','bookmarks','presets','comparisons'])draft[key]=[]; }); toast("Local organization content cleared"); });
+  $('#privacy-revoke').addEventListener('click',async()=>{const result=await bridge.revokePermissions();toast(result.ok?'Media grants revoked; panels reloaded':result.error);});
+  $('#privacy-erase-backups').addEventListener('click',async()=>{clearTimeout(backupTimer);const result=await bridge.eraseBackups();toast(result.ok?'Retained backups deleted':result.error||'Canceled');});
+  $('#privacy-clear-session').addEventListener('click',async()=>{const panel=currentWorkspace().panels.find(p=>p.id===$('#privacy-account').value);if(!panel)return;const result=await bridge.clearSession(partitionFor(panel));toast(result.ok?'Account storage cleared':result.error||'Canceled');});
   $("#onboarding-finish").addEventListener("click", () => updateState((draft) => { draft.settings.onboardingComplete = true; }));
   document.addEventListener("click", (event) => {
     const providerButton = event.target.closest("[data-add-provider]"); if (providerButton) openPanelDialog(providerButton.dataset.addProvider);
     if (event.target.closest("[data-empty-add]")) openPanelDialog();
     const remove = event.target.closest("[data-panel-remove]"); if (remove) removePanel(remove.dataset.panelRemove);
     const reload = event.target.closest("[data-panel-reload]"); if (reload) viewCache.get(reload.dataset.panelReload)?.reload();
+    const browser=event.target.closest('[data-panel-browser]');if(browser){const panel=currentWorkspace().panels.find(p=>p.id===browser.dataset.panelBrowser);if(panel)void bridge.openExternal(viewCache.get(panel.id)?.getURL?.()||byId[panel.providerId].url);}
     const back = event.target.closest("[data-panel-back]"); if (back && viewCache.get(back.dataset.panelBack)?.canGoBack()) viewCache.get(back.dataset.panelBack).goBack();
     const deletion = event.target.closest("[data-delete-item]"); if (deletion) { const [kind, id] = deletion.dataset.deleteItem.split(":"); deleteItem(kind, id); }
     const favorite = event.target.closest("[data-favorite-item]"); if (favorite) updateState((draft) => { const item = draft.library.find((entry) => entry.id === favorite.dataset.favoriteItem); if (item) item.favorite = !item.favorite; });
@@ -458,9 +448,18 @@ function bindEvents() {
 }
 
 async function initialize() {
+  await loadState();
   bindEvents(); renderChrome(); renderPanels();
   const meta = await bridge.getAppMeta(); $("#app-version").textContent = `v${meta.version} · ${meta.platform}`;
   if (!state.settings.onboardingComplete) $("#onboarding-dialog").showModal();
 }
 
 void initialize();
+
+async function providerAction(panel, action, text, scope, url) {
+  const view=viewCache.get(panel.id);
+  if(!view?.getWebContentsId)throw new Error('Provider panel is not ready.');
+  const result=await bridge.providerAction({guestId:view.getWebContentsId(),providerId:panel.providerId,action,text,scope,url});
+  if(!result.ok)throw new Error(result.canceled?'Sharing canceled':result.error);
+  return result.result;
+}

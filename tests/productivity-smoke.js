@@ -42,13 +42,14 @@ async function main(){
     state.workspaces=state.workspaces.filter(workspace=>workspace.id!==freshWorkspace);renderPanels();
     const backup=await bridge.saveBackup(JSON.stringify(Core.exportPayload(state)));
     const list=await bridge.listBackups();
-    const read=await bridge.readBackup(backup.name);
-    const roundtrip=Core.importPayload(read.content).skills.some(item=>item.id===skill.id);
+    const read=backup.ok?await bridge.readBackup(backup.name):null;
+    const roundtrip=read?.ok?Core.importPayload(read.content).skills.some(item=>item.id===skill.id):false;
     state.skills=state.skills.filter(item=>item.id!==skill.id);state.presets=state.presets.filter(item=>item.title!=='Smoke preset');persist();
     toolsDialog.close();
-    return {preview,favorite:skill.favorite,ratio,focused,preserved,restored,isolated,mounted,backup:backup.ok,list:list.ok,roundtrip};
+    return {preview,favorite:skill.favorite,ratio,focused,preserved,restored,isolated,mounted,backup:backup.ok,backupError:backup.error,list:list.ok,roundtrip,storageWritable};
   })()`);
-  assert.equal(result.preview,'Review example');assert.equal(result.favorite,true);assert.equal(result.ratio,65);assert.equal(result.focused,1);assert.equal(result.preserved,true);assert.equal(result.restored,2);assert.equal(result.backup,true);assert.equal(result.list,true);assert.equal(result.roundtrip,true);
+  assert.equal(result.preview,'Review example');assert.equal(result.favorite,true);assert.equal(result.ratio,65);assert.equal(result.focused,1);assert.equal(result.preserved,true);assert.equal(result.restored,2);assert.equal(result.list,true);
+  if(result.storageWritable){assert.equal(result.backup,true);assert.equal(result.roundtrip,true);}else{assert.equal(result.backup,false);assert.match(result.backupError,/encryption.*unavailable/i);}
   assert.equal(result.isolated,true);assert.equal(result.mounted,true);
   console.log('Productivity workflows passed',JSON.stringify(result));
 }

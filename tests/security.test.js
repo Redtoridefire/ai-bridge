@@ -6,9 +6,14 @@ const security = require("../src/security");
 
 test("provider navigation only allows registered HTTPS origins", () => {
   assert.equal(security.isAllowedProviderUrl("https://chatgpt.com/c/123"), true);
-  assert.equal(security.isAllowedProviderUrl("https://subdomain.claude.ai/path"), true);
-  assert.equal(security.isAllowedProviderUrl("https://accounts.google.com/signin"), true);
-  assert.equal(security.isAllowedProviderUrl("https://login.microsoftonline.com/common"), true);
+  assert.equal(security.isAllowedProviderUrl("https://subdomain.claude.ai/path"), false);
+  assert.equal(security.isAllowedProviderUrl("https://accounts.google.com/signin"), false);
+  assert.equal(security.isAllowedProviderUrl("https://login.microsoftonline.com/common"), false);
+  assert.equal(security.isProviderUrl('https://accounts.google.com/signin','claude',true),true);
+  assert.equal(security.isProviderUrl('https://accounts.google.com/signin','claude'),false);
+  assert.equal(security.isProviderUrl('https://chatgpt.com','claude',true),false);
+  assert.equal(security.isProviderUrl('https://claude.ai:4443','claude',true),false);
+  assert.equal(security.isProviderUrl('https://user:secret@claude.ai','claude'),false);
   assert.equal(security.isAllowedProviderUrl("http://chatgpt.com"), false);
   assert.equal(security.isAllowedProviderUrl("https://chatgpt.com.evil.test"), false);
   assert.equal(security.isAllowedProviderUrl("javascript:alert(1)"), false);

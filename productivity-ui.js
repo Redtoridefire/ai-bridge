@@ -76,7 +76,7 @@ function reviewUse(item) {
   editor.innerHTML=`<div class="dialog-form"><h3>Review: ${html(item.title)}</h3>${fields.map((name,index)=>`<label>${html(name)}<input data-template-field="${index}"></label>`).join('')}<button id="template-fill">Fill template fields</button><label>Exact content<textarea id="use-preview" rows="10">${html(item.providerName?`Provider: ${item.providerName}\n\n${item.content}`:item.content||'')}</textarea></label><label>Destination<select id="use-destination">${currentWorkspace().panels.map(panel=>`<option value="${html(panel.id)}">${html(panel.accountLabel)}</option>`).join('')}</select></label><button id="use-copy">Copy reviewed text</button><button id="use-prepare">Prepare in selected panel</button><p class="muted">Final submission remains yours. Review imported instructions before use.</p></div>`;
   $('#template-fill').onclick=()=>{$('#use-preview').value=Productivity.fill(item.content,Object.fromEntries(fields.map((name,index)=>[name,$(`[data-template-field="${index}"]`).value])));};
   $('#use-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#use-preview').value);toast('Copied');}catch{toast('Clipboard unavailable; select and copy the preview manually');}};
-  $('#use-prepare').onclick=async()=>{const panel=currentWorkspace().panels.find(p=>p.id===$('#use-destination').value);if(!panel)return toast('Add a provider panel first');try{const content=$('#use-preview').value;await navigator.clipboard.writeText(content);const result=await viewCache.get(panel.id)?.executeJavaScript(buildInsertScript(byId[panel.providerId],content),true);toast(result==='PREPARED'?'Prepared — review and submit in provider':'Copied — paste manually');}catch{toast('Use Copy reviewed text, then paste manually');}};
+  $('#use-prepare').onclick=async()=>{const panel=currentWorkspace().panels.find(p=>p.id===$('#use-destination').value);if(!panel)return toast('Add a provider panel first');try{const result=await providerAction(panel,'insert',$('#use-preview').value);toast(result==='PREPARED'?'Shared with composer — review and submit there':'No composer found. Copy manually if desired.');}catch(error){toast(error.message);}};
 }
 function githubImport() {
   $('#tool-editor').innerHTML=`<div class="dialog-form"><label>Public GitHub repository or file URL<input id="github-url" placeholder="https://github.com/owner/skills"></label><button id="github-fetch">Find / preview skills</button><p id="github-status" role="status"></p><div id="github-results"></div></div>`;
@@ -116,7 +116,7 @@ toolsDialog.addEventListener('click',async event=>{
     if(button.dataset.toolDelete&&confirm('Delete this saved item?')){state[toolTab]=state[toolTab].filter(item=>item.id!==button.dataset.toolDelete);saveTools();}
     if(button.dataset.toolUse){const item=find(button.dataset.toolUse);if(toolTab==='bookmarks'){
       const panel=currentWorkspace().panels.find(p=>isBookmarkProvider(p,item.url));
-      if(panel&&confirm(`Open bookmark in ${panel.accountLabel}? This navigates its current page.`)){viewCache.get(panel.id).src=item.url;toolsDialog.close();}
+      if(panel&&confirm(`Open bookmark in ${panel.accountLabel}? This navigates its current page.`)){await providerAction(panel,'navigate',undefined,undefined,item.url);toolsDialog.close();}
       else if(!panel)toast('Add a panel for this provider first.');
     }else reviewUse(item);}
     if(button.dataset.presetUse){const preset=state.presets.find(item=>item.id===button.dataset.presetUse);state.workspaces.push({id:Core.id('workspace'),name:preset.title,ratio:preset.ratio,panels:preset.panels.map(panel=>({...panel,id:Core.id('panel')}))});state.activeWorkspaceId=state.workspaces.at(-1).id;persist();renderChrome();renderPanels();toolsDialog.close();}
@@ -134,6 +134,5 @@ document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&e
 
 // Backup only organization state. Debouncing groups edits; main process serializes writes.
 const persistOriginal=persist;
-persist=function(){persistOriginal();clearTimeout(backupTimer);if(bridge.saveBackup)backupTimer=setTimeout(async()=>{const result=await bridge.saveBackup(JSON.stringify(Core.exportPayload(state)));if(!result.ok)setStatus(`Backup needs attention: ${result.error}`);},1500);};
-if(bridge.saveBackup)void bridge.saveBackup(JSON.stringify(Core.exportPayload(state)));
+persist=function(){persistOriginal();clearTimeout(backupTimer);if(storageWritable&&bridge.saveBackup)backupTimer=setTimeout(async()=>{const result=await bridge.saveBackup(JSON.stringify(Core.exportPayload(state)));if(!result.ok)setStatus(`Backup needs attention: ${result.error}`);},1500);};
 applyPanelLayout();

@@ -35,7 +35,7 @@
       </header>
 
       <section id="compare-bar" class="workflow-bar" hidden>
-        <div><strong>Compare with selected providers</strong><p>AI Command Center prepares the same prompt in each composer. Review it in every provider and submit it yourself.</p></div>
+        <div><strong>Compare with selected providers</strong><p>Preparing shares text with the website immediately, before Send. Each destination requires confirmation. Clipboard is unchanged.</p></div>
         <div id="compare-targets" class="target-list"></div>
         <textarea id="compare-prompt" rows="2" placeholder="Prompt to prepare for comparison"></textarea>
         <button id="compare-prepare" class="primary">Prepare in selected panels</button>
@@ -47,7 +47,8 @@
       </section>
 
       <main id="panel-grid" class="panel-grid" aria-live="polite"></main>
-      <footer class="statusbar"><span id="global-status">Ready · data stays on this device</span><span id="app-version"></span></footer>
+      <div id="privacy-status" role="status" class="privacy-status"></div>
+      <footer class="statusbar"><span id="global-status">Ready</span><span id="app-version"></span></footer>
     </section>
 
     <aside id="utility-panel" class="utility-panel" aria-label="Local utility panel">
@@ -92,13 +93,13 @@
 
   <dialog id="handoff-dialog" class="wide-dialog">
     <form method="dialog" id="handoff-form" class="dialog-form">
-      <header><div><h2>Review handoff</h2><p>Nothing is sent automatically. Inspect and redact the exact content first.</p></div><button value="cancel" formnovalidate class="icon-button" aria-label="Close">×</button></header>
+      <header><div><h2>Review handoff</h2><p>Review and redact first. Preparing exposes text to the destination before Send. Copying exposes it to OS clipboard history/sync.</p></div><button value="cancel" formnovalidate class="icon-button" aria-label="Close">×</button></header>
       <div class="form-grid"><label>Source<select id="handoff-source"></select></label><label>Destination<select id="handoff-destination"></select></label><label>Scope<select id="handoff-scope"><option value="conversation">Available conversation</option><option value="selection">Current text selection</option><option value="summary">Summary request</option></select></label></div>
       <div class="inline-actions"><button type="button" id="handoff-extract">Load from source</button><span id="handoff-capability" class="muted"></span></div>
       <label>Exact content to share<textarea id="handoff-content" rows="13" maxlength="120000" placeholder="Load available content, or paste it manually here."></textarea></label>
       <label class="check-row"><input type="checkbox" id="handoff-save-local"> Save a copy to my local library</label>
-      <label class="check-row"><input type="checkbox" id="handoff-try-insert" checked> Try to populate the destination composer (clipboard fallback is always available)</label>
-      <footer><button value="cancel" formnovalidate>Cancel without sharing</button><button id="handoff-confirm" value="default" class="primary">Copy and open destination</button></footer>
+      <label class="check-row"><input type="checkbox" id="handoff-try-insert"> Also share with destination composer (requires disclosure confirmation)</label>
+      <footer><button value="cancel" formnovalidate>Cancel without sharing</button><button id="handoff-confirm" value="default" class="primary">Copy reviewed text</button></footer>
     </form>
   </dialog>
 
@@ -116,6 +117,7 @@
     <form method="dialog" id="settings-form" class="dialog-form">
       <header><div><h2>Settings</h2><p>Provider sessions remain in Electron's isolated profile storage.</p></div><button value="cancel" formnovalidate class="icon-button">×</button></header>
       <label>Appearance<select id="theme-select"><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select></label>
+      <section><h3>Privacy controls</h3><p>Exports and clipboard copies are plaintext. Deleting files does not guarantee forensic erasure; use full-disk encryption for device protection.</p><button type="button" id="privacy-revoke">Revoke camera/microphone grants</button><button type="button" id="privacy-erase-backups">Erase retained backups</button><label>Account<select id="privacy-account"></select></label><button type="button" id="privacy-clear-session">Sign out and clear selected account storage</button></section>
       <div><h3>Providers</h3><div id="provider-settings" class="provider-settings"></div></div>
       <div><h3>Projects and labels</h3><p class="muted">Comma-separated. There are no app-level quotas.</p><label>Projects<input id="projects-input"></label><label>Labels<input id="labels-input"></label></div>
       <div class="danger-zone"><h3>Local data</h3><button type="button" id="export-json">Export JSON</button><button type="button" id="export-markdown">Export Markdown</button><button type="button" id="export-html">Export HTML</button><button type="button" id="data-import">Import JSON</button><button type="button" id="clear-workspace-data" class="danger">Clear organization data</button></div>

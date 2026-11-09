@@ -1,44 +1,51 @@
-# Security model
+# Security model and verification
 
-AI Command Center displays remote, potentially hostile provider content next to trusted local UI. Its main boundary is that provider pages never receive Node.js, filesystem, shell, or unrestricted IPC access.
+AI Command Center hosts untrusted provider pages alongside a trusted local UI. It is a desktop browser application: the privileged Electron process must be trusted with authenticated sessions. Panels do not turn provider websites into offline services or change their privacy policies.
 
-## Threat model
+## Remote content and credentials
 
-### Malicious or compromised provider content
+Provider guests have Node integration disabled, context isolation and sandboxing enabled, and no application preload. Each persistent account partition is bound to one provider. Exact provider HTTPS origins and explicitly named authentication origins are separate; arbitrary subdomains, credentials in URLs, nonstandard ports, and cross-provider navigation are rejected. Main-frame navigations and redirects are checked. Native windows/popups are denied, downloads are delegated only after a confirmation, and the explicit external-browser button requires confirmation.
 
-Provider pages run with `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, and `webSecurity: true`. The main process validates the initial provider URL and partition before attaching a webview. Navigation is limited to registered HTTPS provider hosts; other HTTPS links open in the system browser, and non-HTTPS links are rejected. Permission requests default to denied except a small origin-checked set needed for chat media, fullscreen, sanitized clipboard writes, and notifications.
+Camera/microphone permission checks deny access until an explicit, origin-specific native approval. Requests from subframes or unknown origins are rejected. Media grants are scoped to the account partition and current app session. All other permissions are denied. Settings supports grant revocation and account storage/cache clearing. Provider sign-in compatibility, OS media permissions, and site changes require real-platform testing.
 
-Website content can still display deceptive UI, track activity according to the provider's own policies, or exploit an Electron/Chromium vulnerability. Keep Electron updated and do not install untrusted extensions.
+The application does not deliberately collect passwords, cookies, or tokens into its organization database or exports. Browser authentication data remains in Electron's partition storage. However, a compromised main process or dependency can access browser sessions: isolation is not protection against a malicious application update. No claim is made that a separate password field is the only way credentials can be compromised.
 
-### Cross-provider leakage
+## Trusted UI, IPC, and imported data
 
-Each panel uses a unique persistent session partition. The app does not read or export cookies, passwords, or tokens. Compare and handoff content moves only after explicit user action. Handoff always exposes the exact text in an editable preview and records metadata rather than credentials. Clipboard fallback may leave content in the OS clipboard; users should clear sensitive clipboard content when appropriate.
+The local UI runs at `aicc://app/index.html`, served through an explicit static asset allowlist. No arbitrary filesystem paths or main-process source are exposed by that protocol. CSP blocks remote scripts, connections, inline scripts, object content, and untrusted base URLs. Every IPC handler checks the exact app window and main frame before reading input, opening dialogs, making network requests, or accessing saved data.
 
-### Local data exposure
+Organization imports validate schema version, workspace/panel uniqueness, provider IDs, identifier characters, collection types, settings, and unsafe prototype properties. A saved/imported state cannot rebind a known account to another provider. Imported skills remain untrusted, escaped text: referenced files and executable commands are not fetched or executed. Their instructions can still cause harmful model behavior, so users must review them before applying them.
 
-Notes, saved content, exports, and workspace state are local files protected by the current OS account, not end-to-end encrypted. Anyone with access to the OS profile may be able to read them. JSON exports can contain sensitive conversation text and should be handled accordingly. The app limits import/export size and validates paths through Electron dialogs.
+Public GitHub imports use fixed `api.github.com` API routes without app-provided credentials, bounded responses, TLS verification, and no redirects. Ollama is limited to model discovery and generation on `127.0.0.1:11434`; the renderer cannot choose another destination. A local process controlling that port can read selected material.
 
-### Compromised dependencies
+## Sharing, clipboard, and provider drafts
 
-Electron and electron-builder are development dependencies installed from npm. Review dependency changes, use a lockfile in release branches, run `npm audit`, and build releases in a controlled CI environment. Release signing credentials must remain in the CI secret store.
+**Composer preparation is disclosure, even without final submission.** Provider scripts can read or autosave input as soon as it is inserted. All insertion goes through the main process, verifies the current provider origin, presents a native disclosure confirmation naming the destination/character count, and executes a second origin guard inside the provider page. Authentication pages cannot be automated.
 
-## IPC and navigation rules
+Compare no longer implicitly copies prompts. Handoff defaults to explicit copy only; insertion is unchecked and separately confirmed. Skills/context offer separate Copy and Prepare actions. Clipboard copies can persist in OS history or cloud synchronization. No automatic clipboard clearing is attempted because it could overwrite unrelated user content. Providers may retain disclosed drafts according to their policies.
 
-- The preload bridge exposes only app metadata, HTTPS external links, partition-scoped clearing, and bounded file import/export.
-- IPC payloads are validated in the main process.
-- Export filenames are sanitized and file paths are chosen through native dialogs.
-- Provider content cannot select arbitrary Electron partitions.
-- Popups are denied; safe HTTPS destinations are delegated to the system browser.
-- No remote debugging interface is enabled in packaged builds.
+## Local storage, migration, and retention
 
-## Skills, local AI, and backups
+Organization state and automatic snapshots use Electron `safeStorage` with OS-protected encryption (DPAPI on Windows). The app refuses insecure `basic_text` fallback storage. If protection or decryption is unavailable, or migration fails, persistence is visibly locked and existing files are not overwritten. New work then remains in memory until explicitly exported.
 
-Imported skills are untrusted plain text, never scripts or privileged plugins. Public GitHub imports use fixed `api.github.com` routes with bounded responses and no application-provided credentials. All content is previewed before saving, copying, or preparing a composer. Supporting files and executable skill commands are not fetched or run. Applying a skill to a provider still exposes its instructions to that model, so inspect the content before sharing sensitive context.
+Legacy local storage and plaintext snapshots are migrated only after schema validation and verified encrypt/decrypt round-trips. Database removal and file replacement are logical deletion; historical disk blocks, OS backups, and exported files may still contain plaintext. Use full-disk encryption and appropriate device/backup policies. The app uses Electron's OS-cookie-encryption fuse in development and packaged binaries; without OS protection, new provider sessions are ephemeral. Existing cookies encrypt when rewritten by the engine; enabling this fuse is a one-way transition, and reverting to an unfused build risks cookie-store compatibility. The update does not forcibly rewrite existing cookies. Local malware under the same user account remains a threat.
 
-Ollama IPC is restricted to model listing and generation on `127.0.0.1:11434`; the renderer cannot supply a network destination. The user chooses the model and exact material. Local inference is optional; it does not grant access to browser sessions. A local process controlling that port can see submitted material.
+Ten encrypted organization snapshots are retained. Restore makes a safety snapshot. Settings can erase retained backups and clear saved organization content separately from account sessions. Deletion is not forensic secure erasure. Explicit JSON/Markdown/HTML exports are plaintext and require separate protection, especially during transfer between machines/OS accounts. Text that users paste into notes can contain credentials and will be backed up/exported as text.
 
-Organization backups contain workspace metadata and locally saved content, including skills and notes. They exclude provider partitions and credentials, are written atomically in the OS app profile, and retain ten snapshots. They are not encrypted. Backup and integration IPC requires the trusted app's main frame and returns structured errors. Provider pages cannot invoke these operations.
+## Supply chain and distribution
+
+The lockfile is committed and CI uses `npm ci`. Full dependency auditing includes build tools, not merely production-classified dependencies. Targeted minimatch overrides address GHSA-g3hv-75wg-m249; Linux/Windows packaging must be rechecked when changing them. Weekly Dependabot updates, CodeQL, Gitleaks, tests, and full auditing are configured with SHA-pinned actions. Configuring CI is not evidence it ran successfully; inspect GitHub results.
+
+Packaged fuses disable RunAsNode, NODE_OPTIONS loading, and Node CLI inspection; enable cookie encryption; and restrict loading to app.asar with supported embedded integrity checks enabled. The file-protocol privilege fuse is deliberately retained for legacy file-origin localStorage migration: disabling it makes Chromium reject access to the legacy database. Only the isolated static migration page uses file://, without preload, Node integration, executable page scripts, or navigation. The normal UI uses the constrained custom origin and cannot navigate to file pages. The postinstall/prestart helper verifies development fuses, while keeping directory loading available for source development. Static CI explicitly skips binary downloads. These controls do not replace distributor code signing. Tagged Windows releases require a distributor-provided certificate via `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD`. Manual test builds may be unsigned. Artifacts include SHA-256 checksums and a CycloneDX dependency inventory; these do not alone establish trusted authorship or signed build provenance.
+
+Enable GitHub secret scanning/push protection, protected branches, and review requirements in repository settings where available. Gitleaks licensing requirements may differ for organization-owned repositories. No certificates, signing passwords, provider tokens, or private keys should be committed.
+
+## Verification and limits
+
+The regression suite exercises permission denial/grants, per-account media scope, foreign-frame IPC denial, canceled insertion, redirect boundaries, strict imports, origin-guarded scripts, encryption plumbing, locked storage, and backup migration. A real Electron temporary-profile test verifies migration from the legacy file origin using a test crypto adapter. This is not a test of Windows DPAPI itself. The Windows build workflow separately runs `npm run test:windows-crypto` against actual Windows safeStorage; its outcome must be checked in GitHub Actions. Linux cloud GUI smoke testing uses a container-specific `--no-sandbox` flag; that flag is not part of Windows startup or packaged shortcuts.
+
+This work uses Electron's security checklist, relevant OWASP ASVS/GenAI controls, and NIST SSDF practices as guidance. It is not compliance certification, independent penetration testing, or proof of provider sign-in compatibility.
 
 ## Reporting
 
-Report suspected vulnerabilities privately to the repository owner. Do not include provider cookies, session tokens, passwords, exported conversations, or other personal data in an issue.
+Report vulnerabilities privately to the repository owner. Never include cookies, tokens, passwords, signing credentials, or private conversations in issues or diagnostic logs.

@@ -82,9 +82,23 @@ GitHub imports require access to `api.github.com` and are subject to unauthentic
 | `Ctrl+3` | Handoff mode |
 | `Ctrl+Shift+P` | Add provider account |
 
+## Security update (1.2.1)
+
+Camera/microphone access defaults to denied and requires an explicit origin-specific prompt. Grants last for the current app session and are isolated per account. **Settings → Privacy controls** lets you revoke grants, clear an account's provider storage/cache, or erase retained backups.
+
+**Preparing text in a provider composer discloses it immediately**, even before you press Send: websites can read input or autosave drafts. Each preparation now requires a native confirmation naming the destination and character count. Compare preparation does not copy to the clipboard. Handoff defaults to explicit copy only; destination insertion is unchecked. Clipboard history/sync and exported files can retain sensitive text.
+
+The local UI runs on a constrained `aicc://app` origin, not a privileged `file://` page. Privileged IPC validates the exact app window/main frame. Each provider account has a separate, exact-origin navigation policy and named sign-in exceptions. Redirects are checked; extraction/insertion is refused on authentication pages or if the provider origin changes. Some enterprise SSO or provider login flows may need additional reviewed exact origins. Use the panel's **↗** button for a confirmed external-browser fallback; browser cookies are not imported into the app.
+
+Organization data and automatic backups use Electron `safeStorage` with OS-protected encryption (Windows uses DPAPI). On first supported launch, the app migrates legacy organization local storage and plaintext snapshots, verifies decryption, and only then removes the logical plaintext copy. If OS encryption is unavailable or migration/validation fails, persistence is visibly locked; existing data is preserved and new work remains in memory. Export before closing in this state. No insecure `basic_text` fallback is accepted.
+
+Encrypted profile snapshots are tied to the OS protection context; use an explicit plaintext JSON export/import when moving saved organization data to another machine/account, and protect that file separately. These controls do not encrypt exports, the OS clipboard, or manually pasted credentials. Cookie encryption uses Electron's official OS-cookie-encryption fuse in both development and packaged builds. This is a one-way transition: existing cookies are encrypted on rewrite; do not downgrade to an unfused build afterward. Existing cookies are not forcibly rewritten or exported by this update. When OS protection is unavailable, newly opened provider sessions are ephemeral instead of persistent. Deleting legacy database entries or backups is not a guarantee of forensic erasure of historical disk blocks; full-disk encryption remains recommended.
+
+Tagged Windows release builds require repository secrets `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD` for a distributor-provided code-signing certificate. Manual workflow test builds may remain unsigned. Workflow actions are SHA-pinned; CI runs tests, full dependency auditing, CodeQL, and Gitleaks. Dependabot checks npm and action updates weekly. GitHub-hosted checks and signing must be verified in your repository; source changes alone do not prove those external controls ran.
+
 ## Local data model
 
-Workspace layouts, settings, notes, snippets, labels, projects, handoff metadata, and explicitly saved library content are stored in the app's Chromium local storage under Electron's OS-managed user data directory. Provider cookies and web storage remain in separate persistent Electron session partitions. JSON exports include organization data and saved library content but never provider cookies or login tokens.
+Workspace layouts, settings, notes, snippets, labels, projects, skills, handoff metadata, and explicitly saved library content are stored in `organization.enc.json` under Electron's OS-managed user-data directory, encrypted with OS-protected `safeStorage`. Provider cookies and web storage remain in separate persistent Electron session partitions. JSON exports include organization data and saved library content but never deliberately collect provider cookies or login tokens. Text you manually paste into a note or conversation is still included in saved content.
 
 Local search only covers content the user explicitly saves or imports. It does not claim to index complete provider histories and does not scrape entire accounts.
 

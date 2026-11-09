@@ -32,9 +32,10 @@ async function githubSkills(fetcher, input) {
   return { files: files.map(file => ({ path: file.path, url: `https://github.com/${repo.owner}/${repo.repo}/blob/${encodeURIComponent(info.default_branch)}/${file.path.split('/').map(encodeURIComponent).join('/')}` })), truncated: !!tree.truncated };
 }
 
-function backupStore(directory) {
+function backupStore(directory, codec = {encode: text=>text, decode: text=>text}) {
   let queue = Promise.resolve();
   return {
+    flush:()=>queue.catch(()=>{}),
     async list() { await fs.mkdir(directory, { recursive: true }); return (await fs.readdir(directory)).filter(name => /^backup-[\w-]+\.json$/.test(name)).sort().reverse(); },
     save(content) {
       const operation = queue.catch(() => {}).then(async () => {
@@ -45,7 +46,8 @@ function backupStore(directory) {
         await fs.mkdir(directory, { recursive: true });
         const name = `backup-${new Date().toISOString().replace(/[^\dT]/g, '-')}-${require('node:crypto').randomUUID()}.json`;
         const file = path.join(directory, name);
-        await fs.writeFile(`${file}.tmp`, content, { mode: 0o600 });
+        const encrypted=codec.encode(content);if(codec.decode(encrypted)!==content)throw new Error('Backup encryption verification failed.');
+        await fs.writeFile(`${file}.tmp`, encrypted, { mode: 0o600 });
         await fs.rename(`${file}.tmp`, file);
         const names = (await fs.readdir(directory)).filter(n => /^backup-[\w-]+\.json$/.test(n)).sort().reverse();
         for (const old of names.slice(10)) await fs.unlink(path.join(directory, old));
@@ -55,8 +57,20 @@ function backupStore(directory) {
     },
     async read(name) {
       if (typeof name !== 'string' || !/^backup-[\w-]+\.json$/.test(name)) throw new Error('Invalid backup name.');
-      return fs.readFile(path.join(directory, name), 'utf8');
+      return codec.decode(await fs.readFile(path.join(directory, name), 'utf8'));
     },
+    async migrate(){
+      await fs.mkdir(directory,{recursive:true});
+      for(const name of (await fs.readdir(directory)).filter(n=>/^backup-[\w-]+\.json$/.test(n))){
+        const file=path.join(directory,name),text=await fs.readFile(file,'utf8');
+        const parsed=JSON.parse(text);
+        if(parsed.format==='aicc-encrypted-v1'){codec.decode(text);continue;}
+        require('./core').importPayload(parsed);
+        const encrypted=codec.encode(text);if(codec.decode(encrypted)!==text)throw new Error('Backup migration verification failed.');
+        await fs.writeFile(`${file}.tmp`,encrypted,{mode:0o600});await fs.rename(`${file}.tmp`,file);
+      }
+    },
+    async clear(){await queue.catch(()=>{});await fs.mkdir(directory,{recursive:true});for(const name of (await fs.readdir(directory)).filter(n=>/^backup-[\w-]+\.json(?:\.tmp)?$/.test(n)))await fs.unlink(path.join(directory,name));},
   };
 }
 module.exports = { githubSkills, backupStore, boundedJson };
