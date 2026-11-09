@@ -13,19 +13,41 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          node-version: 20
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm run test:windows-crypto
+      - run: npm audit --audit-level=moderate
+      - name: Require signing for tagged releases
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) { throw "Configure Windows signing secrets before publishing a tagged release. Manual test builds can be unsigned." }
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      - uses: actions/upload-artifact@v4
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+      - name: Generate dependency inventory and checksums
+        shell: pwsh
+        run: |
+          npm sbom --sbom-format cyclonedx | Out-File -Encoding utf8 dist/sbom.cdx.json
+          Get-ChildItem dist/*.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ai-command-center-windows
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.txt
+            dist/sbom.cdx.json
           if-no-files-found: error
