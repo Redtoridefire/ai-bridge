@@ -14,6 +14,8 @@ let state = loadState();
 let utilityTab = "notes";
 let itemKind = "note";
 let toastTimer;
+let renamingWorkspace = false;
+const comparisonTargets = new Map();
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -131,7 +133,10 @@ function renderPanels() {
 
 function renderCompareTargets() {
   const panels = currentWorkspace().panels;
-  $("#compare-targets").innerHTML = panels.map((panel, index) => `<label class="target-chip"><input type="checkbox" value="${panel.id}" ${index < 2 ? "checked" : ""}><span>${Core.escapeHtml(panel.accountLabel)}</span></label>`).join("") || `<span class="muted">Add at least two panels.</span>`;
+  const workspaceId = currentWorkspace().id;
+  if (!comparisonTargets.has(workspaceId)) comparisonTargets.set(workspaceId, new Set(panels.slice(0, 2).map((panel) => panel.id)));
+  const selected = comparisonTargets.get(workspaceId);
+  $("#compare-targets").innerHTML = panels.map((panel) => `<label class="target-chip"><input type="checkbox" value="${panel.id}" ${selected.has(panel.id) ? "checked" : ""}><span>${Core.escapeHtml(panel.accountLabel)}</span></label>`).join("") || `<span class="muted">Add at least two panels.</span>`;
 }
 
 function showUtility(tab) {
@@ -174,6 +179,7 @@ function renderLibrary() {
 }
 
 function openPanelDialog(providerId = "chatgpt") {
+  if (!providers.some((provider) => isProviderEnabled(provider.id))) return toast("Enable a provider in Settings first");
   $("#panel-provider").innerHTML = providers.filter((provider) => isProviderEnabled(provider.id)).map((provider) => `<option value="${provider.id}">${Core.escapeHtml(providerName(provider.id))}</option>`).join("");
   $("#panel-provider").value = isProviderEnabled(providerId) ? providerId : $("#panel-provider").options[0]?.value;
   $("#panel-label").value = `${providerName($("#panel-provider").value)} — account ${currentWorkspace().panels.filter((panel) => panel.providerId === $("#panel-provider").value).length + 1}`;
@@ -334,7 +340,7 @@ function saveSettings(event) {
     providers.forEach((provider) => { draft.providerSettings[provider.id] = { enabled: $(`[data-provider-enabled="${provider.id}"]`).checked, displayName: $(`[data-provider-name="${provider.id}"]`).value.trim() || provider.name }; });
     draft.projects = $("#projects-input").value.split(",").map((name) => name.trim()).filter(Boolean).map((name, index) => ({ id: draft.projects.find((project) => project.name === name)?.id || `project-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name }));
     draft.labels = $("#labels-input").value.split(",").map((name) => name.trim()).filter(Boolean).map((name, index) => ({ id: `label-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name }));
-  }, { panels: true });
+  });
   $("#settings-dialog").close(); toast("Settings saved");
 }
 
@@ -366,15 +372,32 @@ async function importData() {
 }
 
 function createWorkspace() {
-  const name = prompt("Workspace name", `Workspace ${state.workspaces.length + 1}`)?.trim();
-  if (!name) return;
-  updateState((draft) => { const workspace = { id: Core.id("workspace"), name, panels: [] }; draft.workspaces.push(workspace); draft.activeWorkspaceId = workspace.id; }, { panels: true });
+  openWorkspaceDialog(false);
+}
+
+function openWorkspaceDialog(rename) {
+  renamingWorkspace = rename;
+  $("#workspace-dialog-title").textContent = rename ? "Rename workspace" : "New workspace";
+  $("#workspace-name").value = rename ? currentWorkspace().name : `Workspace ${state.workspaces.length + 1}`;
+  $("#workspace-dialog").showModal();
 }
 
 function bindEvents() {
   $("#workspace-select").addEventListener("change", (event) => updateState((draft) => { draft.activeWorkspaceId = event.target.value; }, { panels: true }));
   $("#workspace-add").addEventListener("click", createWorkspace);
-  $("#workspace-rename").addEventListener("click", () => { const name = prompt("Workspace name", currentWorkspace().name)?.trim(); if (name) updateState((draft) => { Core.activeWorkspace(draft).name = name; }); });
+  $("#workspace-rename").addEventListener("click", () => openWorkspaceDialog(true));
+  $("#workspace-form").addEventListener("submit", (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    const name = $("#workspace-name").value.trim();
+    if (!name) return;
+    updateState((draft) => {
+      if (renamingWorkspace) Core.activeWorkspace(draft).name = name;
+      else { const workspace = { id: Core.id("workspace"), name, panels: [] }; draft.workspaces.push(workspace); draft.activeWorkspaceId = workspace.id; }
+    }, { panels: !renamingWorkspace });
+    $("#workspace-dialog").close();
+  });
+  $("#compare-targets").addEventListener("change", () => comparisonTargets.set(currentWorkspace().id, new Set($$("#compare-targets input:checked").map((input) => input.value))));
   $$("[data-mode]").forEach((button) => button.addEventListener("click", () => updateState((draft) => { draft.mode = button.dataset.mode; })));
   $("#add-panel").addEventListener("click", () => openPanelDialog());
   $("#panel-provider").addEventListener("change", (event) => { $("#panel-label").value = `${providerName(event.target.value)} — account ${currentWorkspace().panels.filter((panel) => panel.providerId === event.target.value).length + 1}`; });

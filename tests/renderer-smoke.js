@@ -43,6 +43,43 @@ async function main() {
   assert.equal(result.panels, 2);
   assert.equal(result.utilityTabs, 3);
   assert.ok(result.appVersion);
+  const workflows = await evaluate(target.webSocketDebuggerUrl, `(async()=>{
+    document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
+    const visible=id=>getComputedStyle(document.getElementById(id)).display!=='none';
+    const states=[];
+    const panel=document.querySelector('.provider-panel');
+    for(const mode of ['independent','compare','handoff']){
+      document.querySelector('[data-mode="'+mode+'"]').click();
+      states.push({mode,compare:visible('compare-bar'),handoff:visible('handoff-bar')});
+    }
+    document.querySelector('[data-mode="compare"]').click();
+    const checkbox=document.querySelector('#compare-targets input');
+    checkbox.checked=false;checkbox.dispatchEvent(new Event('change',{bubbles:true}));
+    if(document.querySelector('.app-shell').classList.contains('utility-closed')) document.querySelector('#utility-toggle').click();
+    document.querySelector('#utility-toggle').click();
+    const targetsPreserved=!document.querySelector('#compare-targets input').checked;
+    document.querySelector('#workspace-rename').click();
+    const name='Smoke renamed workspace';
+    document.querySelector('#workspace-name').value=name;
+    document.querySelector('#workspace-form button[value="default"]').click();
+    const renamed=document.querySelector('#workspace-select option:checked').textContent===name;
+    document.querySelector('#settings-open').click();
+    document.querySelector('#settings-save').click();
+    const panelPreserved=panel===document.querySelector('.provider-panel');
+    document.querySelector('#handoff-open').click();
+    document.querySelector('#handoff-content').value='Cancel regression';
+    document.querySelector('#handoff-form button[value="cancel"]').click();
+    const cancelClosed=!document.querySelector('#handoff-dialog').open;
+    document.querySelector('[data-mode="independent"]').click();
+    return {states,targetsPreserved,renamed,panelPreserved,cancelClosed,noOverflow:document.documentElement.scrollWidth<=innerWidth,width:innerWidth,scroll:document.documentElement.scrollWidth};
+  })()`);
+  assert.deepEqual(workflows.states, [
+    {mode:'independent',compare:false,handoff:false},
+    {mode:'compare',compare:true,handoff:false},
+    {mode:'handoff',compare:false,handoff:true},
+  ]);
+  console.log('Workflow regressions passed', JSON.stringify(workflows));
+  for (const key of ['targetsPreserved','renamed','panelPreserved','cancelClosed','noOverflow']) assert.equal(workflows[key], true, key);
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

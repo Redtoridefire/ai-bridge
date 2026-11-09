@@ -71,6 +71,13 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="workspace-dialog">
+    <form method="dialog" id="workspace-form" class="dialog-form">
+      <h2 id="workspace-dialog-title">New workspace</h2>
+      <label>Workspace name<input id="workspace-name" maxlength="100" required></label>
+      <footer><button value="cancel" formnovalidate>Cancel</button><button value="default" class="primary">Save workspace</button></footer>
+    </form>
+  </dialog>
 
   <dialog id="panel-dialog">
     <form method="dialog" id="panel-form" class="dialog-form">
