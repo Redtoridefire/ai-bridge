@@ -5,6 +5,7 @@ const PROVIDER_ORIGINS = Object.freeze({
   gemini: ['https://gemini.google.com'], deepseek: ['https://chat.deepseek.com'],
   perplexity: ['https://www.perplexity.ai','https://perplexity.ai'],
   copilot: ['https://copilot.microsoft.com'], aistudio: ['https://aistudio.google.com'],
+  muse: ['https://muse.ai'],
 });
 const AUTH_ORIGINS = Object.freeze({
   chatgpt: ['https://auth.openai.com','https://auth0.openai.com','https://accounts.google.com','https://login.microsoftonline.com','https://appleid.apple.com'],
@@ -14,6 +15,7 @@ const AUTH_ORIGINS = Object.freeze({
   perplexity: ['https://accounts.google.com','https://appleid.apple.com'],
   copilot: ['https://login.live.com','https://login.microsoftonline.com','https://account.live.com'],
   aistudio: ['https://accounts.google.com'],
+  muse: [], // Add sign-in origins only after verifying the actual provider flow.
 });
 function origin(value) {
   try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.origin : null; } catch { return null; }

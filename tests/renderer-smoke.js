@@ -39,7 +39,7 @@ async function main() {
   console.log(JSON.stringify(result));
   assert.equal(result.title, "AI Command Center");
   assert.deepEqual(result.modes, ["Independent", "Compare", "Handoff"]);
-  assert.equal(result.providers, 8);
+  assert.equal(result.providers, 9);
   assert.equal(result.panels, 2);
   assert.equal(result.utilityTabs, 3);
   assert.ok(result.appVersion);

@@ -6,7 +6,7 @@
   "use strict";
   const SCHEMA_VERSION = 1;
   const MAX_PANELS = 4;
-  const PROVIDERS = new Set(['chatgpt','claude','grok','gemini','deepseek','perplexity','copilot','aistudio']);
+  const PROVIDERS = new Set(['chatgpt','claude','grok','gemini','deepseek','perplexity','copilot','aistudio','muse']);
   function validateState(candidate) {
     const identifier=value=>typeof value==='string' && /^[a-zA-Z0-9_-]{1,80}$/.test(value);
     function walk(value) {

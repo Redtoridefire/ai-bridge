@@ -6,7 +6,7 @@ No Command Center account, API key, subscription, analytics service, or external
 
 ## What works
 
-- Eight registered providers: ChatGPT, Claude, Grok, Gemini, DeepSeek, Perplexity, Microsoft Copilot, and Google AI Studio.
+- Nine registered providers: ChatGPT, Claude, Grok, Gemini, DeepSeek, Perplexity, Microsoft Copilot, Google AI Studio, and Muse (https://muse.ai/).
 - Independent persistent browser sessions for multiple accounts of the same provider.
 - One to four simultaneous panels in each saved workspace.
 - Independent, Compare, and Handoff modes. Compare prepares a prompt but never silently submits it. Handoff exposes an editable preview and requires confirmation.
@@ -113,6 +113,8 @@ Local search only covers content the user explicitly saves or imports. It does n
 - `tests/`: Node test suite for core behavior, registry coverage, and security boundaries.
 
 ## Current limitations
+
+- Muse opens the supplied muse.ai website in its own account panel. Its extraction, composer insertion, and comparison capabilities are manual; no chat automation is claimed. Only `https://muse.ai` is permitted for its navigation. Its actual embedded sign-in flow has not been verified; additional authentication origins require review. Use the panel's external-browser button if embedding is unsupported.
 
 - Provider website embedding and automation are inherently subject to provider policy and technical controls. Some sites may block Electron sign-in or embedded pages. Use the manual clipboard workflow or the provider in your regular browser when that occurs.
 - Extraction adapters are best effort for ChatGPT, Claude, Gemini, and Copilot. Grok, DeepSeek, Perplexity, and Google AI Studio default to manual extraction until tested selectors can be maintained responsibly.

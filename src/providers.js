@@ -13,6 +13,7 @@
     { id: "perplexity", name: "Perplexity", shortName: "PPLX", url: "https://www.perplexity.ai", color: "#20b8cd", capabilities: { extract: "manual", insert: "best-effort", compare: "assisted" }, selectors: { user: [], assistant: [], composer: ["textarea", "div[contenteditable='true']"] } },
     { id: "copilot", name: "Microsoft Copilot", shortName: "Copilot", url: "https://copilot.microsoft.com", color: "#7c3aed", capabilities: { extract: "best-effort", insert: "best-effort", compare: "assisted" }, selectors: { user: ["[data-content='user-message']"], assistant: ["[data-content='ai-message']"], composer: ["textarea", "div[contenteditable='true']"] } },
     { id: "aistudio", name: "Google AI Studio", shortName: "AI Studio", url: "https://aistudio.google.com", color: "#f6c445", capabilities: { extract: "manual", insert: "manual", compare: "manual" }, selectors: { user: [], assistant: [], composer: [] } },
+    { id: "muse", name: "Muse", shortName: "Muse", url: "https://muse.ai/", color: "#a78bfa", capabilities: { extract: "manual", insert: "manual", compare: "manual" }, selectors: { user: [], assistant: [], composer: [] } },
   ];
   const byId = Object.fromEntries(providers.map((provider) => [provider.id, provider]));
   return Object.freeze({ providers: Object.freeze(providers), byId: Object.freeze(byId) });

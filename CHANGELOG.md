@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added Muse (muse.ai) as a provider with isolated account panels, workspace persistence, exact-origin restrictions, and manual integration fallbacks.
+
 ## 1.2.1 — security hardening
 
 - Replaced automatic media permissions with explicit per-account origin grants and revocation controls.
